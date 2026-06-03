@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 런타임 산출물
+*.snap.json
+snap.json
+/tmp/agworld-*.json
+
+# OS
+.DS_Store
+*.tmp

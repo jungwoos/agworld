@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(plan-design-review)",
+      "Skill(plan-design-review:*)",
+      "Bash(python3 -c \"import pytest; print\\('pytest', pytest.__version__\\)\")",
+      "Bash(python3 -m agworld --ticks 8)",
+      "Bash(python3 -m unittest discover -s tests -p \"test_*.py\" -v)",
+      "Bash(python3 -m unittest discover -s tests -p \"test_*.py\")",
+      "Bash(python3 -m py_compile agworld/*.py tests/*.py)",
+      "Bash(rm -f /tmp/agworld-snap.json)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-learnings-log '{\"skill\":\"plan-eng-review\",\"type\":\"architecture\",\"key\":\"agworld-tier-decided-before-generation\",\"insight\":\"AG-World 결정적순간 판정은 LLM 발화 생성 *전에* 일어나야 함\\(어느 티어 모델로 생성할지 정해야 하므로\\). 그래서 키워드 기반 판정은 새 발화 텍스트가 아니라 *직전 대사*\\(speaker가 반응하는 맥락\\)를 본다. 결과적으로 드라마틱한 줄의 다음 틱이 decisive로 마킹됨\\(한 틱 지연\\). 의도된 동작.\",\"confidence\":9,\"source\":\"observed\",\"files\":[\"/Users/j/Claude Project/AGWorld/agworld/sim.py\",\"/Users/j/Claude Project/AGWorld/agworld/moments.py\"]}')",
+      "Bash(python3 -m agworld --live --interval 1)",
+      "Bash(python3 -m py_compile agworld/cli.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(node --check /tmp/prev.mjs)"
+    ]
+  }
+}

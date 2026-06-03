@@ -1,0 +1,12 @@
+# Render Blueprint — AG-World 무료 웹 서비스 배포
+# 사용법: GitHub에 푸시 → Render 대시보드 → New > Blueprint → 이 저장소 선택.
+# Render가 이 파일을 읽어 서비스를 자동 구성한다.
+services:
+  - type: web
+    name: agworld
+    runtime: python
+    plan: free                      # 무료 플랜(15분 유휴 시 슬립)
+    buildCommand: "python -m pip install --upgrade pip"   # 런타임 의존성 없음(stdlib만)
+    startCommand: "python -m agworld --web --host 0.0.0.0 --port $PORT --interval 6"
+    # Render가 $PORT를 주입한다. 0.0.0.0 바인딩이라야 외부 접속됨.
+    autoDeploy: true
