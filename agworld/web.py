@@ -357,17 +357,22 @@ const clock=new THREE.Clock(); let elapsed=0;
 function animate(){ requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05); elapsed+=dt; const watching=STATE?STATE.watching:true;
   for(const id in avatars){ const av=avatars[id], g=av.group;
-    const moving = watching && !av.speaking;   // 말할 차례면 멈춰서 말함, 자면 정지
-    if(moving){
-      if(av.tx===undefined){ const t=newTarget(); av.tx=t.x; av.tz=t.z; }
-      const dx=av.tx-g.position.x, dz=av.tz-g.position.z, d=Math.hypot(dx,dz);
-      if(d<0.12){ const t=newTarget(); av.tx=t.x; av.tz=t.z; }
-      else { const step=Math.min(WANDER_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; }
+    // idle ↔ walk 상태머신: 목표까지 걷고 → 도착하면 2~6초 멈춰 쉼 → 새 목표
+    let walking=false;
+    if(watching && !av.speaking){   // 말할 차례면 멈춰서 말함, 자면 정지
+      if(av.mode===undefined){ av.mode='idle'; av.until=elapsed + 0.3 + Math.random()*2.5; }  // 시작 스태거
+      if(av.mode==='idle'){
+        if(elapsed>=av.until){ const t=newTarget(); av.tx=t.x; av.tz=t.z; av.mode='walk'; }
+      } else {
+        const dx=av.tx-g.position.x, dz=av.tz-g.position.z, d=Math.hypot(dx,dz);
+        if(d<0.12){ av.mode='idle'; av.until=elapsed + 2 + Math.random()*4; }   // 도착 → 2~6초 쉼
+        else { const step=Math.min(WANDER_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; walking=true; }
+      }
     }
     if(av.speaking && watching){ const ph=(elapsed%1.2)/1.2; av.pulse.scale.setScalar(1+ph*1.8); av.pulse.material.opacity=0.5*(1-ph); }
     else { av.pulse.material.opacity=0; }
-    const amp = moving?0.07:0.03;   // 걸을 때 살짝 통통 튀는 발걸음 느낌
-    av.body.position.y = 0.75 + (watching?Math.sin(elapsed*(moving?6:1.5)+(av.phase||0))*amp:0);
+    const amp = walking?0.07:0.03;   // 걸을 때만 발걸음 bob, 쉴 땐 잔잔하게
+    av.body.position.y = 0.75 + (watching?Math.sin(elapsed*(walking?6:1.5)+(av.phase||0))*amp:0);
   }
   renderer.toneMappingExposure = watching?1:0.7; controls.update(); renderer.render(scene,camera); }
 function resize(){ const r=cv.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); makeCamera(); controls.object=camera; }
