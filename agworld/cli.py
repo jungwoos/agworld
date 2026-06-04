@@ -164,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.web:
         from .web import serve
-        serve(world, host=args.host, port=args.port, interval=args.interval)
+        serve(host=args.host, port=args.port, interval=args.interval)  # serve가 장소(방/동네) 구성
         return 0
 
     if args.live:
