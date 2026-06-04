@@ -335,20 +335,40 @@ function makeAvatar(a, i, n, idx){
   const pulse=new THREE.Mesh(new THREE.RingGeometry(0.5,0.62,32), new THREE.MeshBasicMaterial({color:ACCENT,transparent:true,opacity:0,side:THREE.DoubleSide}));
   pulse.rotation.x=-Math.PI/2; pulse.position.y=0.03; group.add(pulse);
   scene.add(group);
-  avatars[a.id]={group,body,emo,pulse,emoji:a.emoji,speaking:a.speaking};
+  avatars[a.id]={group,body,emo,pulse,emoji:a.emoji,speaking:a.speaking,phase:Math.random()*6.28};
 }
 function updateAvatar(a){ const av=avatars[a.id];
   if(av.emoji!==a.emoji){ av.emo.material.map.dispose(); av.emo.material=sprite(a.emoji,92).material; av.emoji=a.emoji; } av.speaking=a.speaking; }
 
-let STATE=null, currentPlace=null, ready=false;
+let STATE=null, currentPlace=null, currentScene='indoor', ready=false;
 function syncScene(){ if(!STATE) return; const n=STATE.agents.length;
   STATE.agents.forEach((a,i)=>{ if(avatars[a.id]) updateAvatar(a); else makeAvatar(a,i,n,i); }); }
 
-const clock=new THREE.Clock();
-function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const watching=STATE?STATE.watching:true;
-  for(const id in avatars){ const av=avatars[id];
-    if(av.speaking && watching){ const ph=(t%1.2)/1.2; av.pulse.scale.setScalar(1+ph*1.8); av.pulse.material.opacity=0.5*(1-ph); } else { av.pulse.material.opacity=0; }
-    av.body.position.y=0.75+(watching?Math.sin(t*1.5+av.group.position.x)*0.04:0); }
+// 랜덤 배회: 방/광장 안 한 점을 목표로 천천히 걷고, 도착하면 새 목표. 중앙(분수 등)은 회피.
+const WANDER_SPEED = 0.7;
+function newTarget(){
+  const maxR = roomSize*0.38, keep = (currentScene==='outdoor' ? 1.9 : 0.6);
+  let x, z, r;
+  do { x=(Math.random()*2-1)*maxR; z=(Math.random()*2-1)*maxR; r=Math.hypot(x,z); } while(r<keep || r>maxR);
+  return { x, z };
+}
+
+const clock=new THREE.Clock(); let elapsed=0;
+function animate(){ requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05); elapsed+=dt; const watching=STATE?STATE.watching:true;
+  for(const id in avatars){ const av=avatars[id], g=av.group;
+    const moving = watching && !av.speaking;   // 말할 차례면 멈춰서 말함, 자면 정지
+    if(moving){
+      if(av.tx===undefined){ const t=newTarget(); av.tx=t.x; av.tz=t.z; }
+      const dx=av.tx-g.position.x, dz=av.tz-g.position.z, d=Math.hypot(dx,dz);
+      if(d<0.12){ const t=newTarget(); av.tx=t.x; av.tz=t.z; }
+      else { const step=Math.min(WANDER_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; }
+    }
+    if(av.speaking && watching){ const ph=(elapsed%1.2)/1.2; av.pulse.scale.setScalar(1+ph*1.8); av.pulse.material.opacity=0.5*(1-ph); }
+    else { av.pulse.material.opacity=0; }
+    const amp = moving?0.07:0.03;   // 걸을 때 살짝 통통 튀는 발걸음 느낌
+    av.body.position.y = 0.75 + (watching?Math.sin(elapsed*(moving?6:1.5)+(av.phase||0))*amp:0);
+  }
   renderer.toneMappingExposure = watching?1:0.7; controls.update(); renderer.render(scene,camera); }
 function resize(){ const r=cv.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); makeCamera(); controls.object=camera; }
 window.addEventListener('resize', resize);
@@ -357,8 +377,9 @@ function esc(s){ const d=document.createElement('div'); d.textContent=s; return 
 
 async function loadRoom(place){
   let data; try { data=await (await fetch('/room?place='+place)).json(); } catch(e){ return; }
-  roomSize = data.room_size || 8; radius = roomSize*0.28; makeCamera(); controls.object=camera;
-  buildShell(roomSize, data.scene || 'indoor'); buildFurniture(data.items);
+  roomSize = data.room_size || 8; radius = roomSize*0.28; currentScene = data.scene || 'indoor';
+  makeCamera(); controls.object=camera;
+  buildShell(roomSize, currentScene); buildFurniture(data.items);
 }
 
 async function poll(){
