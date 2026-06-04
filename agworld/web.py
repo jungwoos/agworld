@@ -224,17 +224,29 @@ controls.enablePan = false; controls.minPolarAngle = 0.3; controls.maxPolarAngle
 scene.add(new THREE.AmbientLight(0xffffff, 0.75));
 const dir = new THREE.DirectionalLight(0xfff2dd, 0.9); dir.position.set(6,14,4); scene.add(dir);
 
-// ===== 방 셸(바닥/벽/그리드) — 장소 크기에 맞춰 재생성 =====
+// ===== 씬 셸 — 장소 크기/테마에 맞춰 재생성 (indoor=방, outdoor=잔디 광장) =====
 let shellGroup = new THREE.Group(); scene.add(shellGroup);
-function buildShell(size){
-  scene.remove(shellGroup); shellGroup.traverse(o=>{ o.geometry&&o.geometry.dispose&&o.geometry.dispose(); });
-  shellGroup = new THREE.Group(); scene.add(shellGroup);
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(size,0.3,size), new THREE.MeshStandardMaterial({color:0xd9c8a2}));
-  floor.position.y = -0.15; shellGroup.add(floor);
-  const grid = new THREE.GridHelper(size, size, 0xb09a6a, 0xcbbb95); grid.position.y = 0.011; shellGroup.add(grid);
-  const mkWall = (w,h,x,z,ry,c)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
-    new THREE.MeshStandardMaterial({color:c,side:THREE.DoubleSide})); m.position.set(x,h/2,z); m.rotation.y=ry; shellGroup.add(m); };
-  mkWall(size,4,0,-size/2,0,0xe7dabf); mkWall(size,4,-size/2,0,Math.PI/2,0xdccba3);
+function buildShell(size, sceneType){
+  scene.remove(shellGroup); shellGroup = new THREE.Group(); scene.add(shellGroup);
+  if(sceneType === 'outdoor'){
+    scene.background = new THREE.Color(0xbfe3f2);                       // 하늘
+    const grass = new THREE.Mesh(new THREE.BoxGeometry(size*1.9,0.3,size*1.9), new THREE.MeshStandardMaterial({color:0x86b96a}));
+    grass.position.y = -0.15; shellGroup.add(grass);                   // 잔디밭(넓게)
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(size*0.42,48), new THREE.MeshStandardMaterial({color:0xd8cdb4}));
+    plaza.rotation.x = -Math.PI/2; plaza.position.y = 0.02; shellGroup.add(plaza);   // 포장된 광장
+    const edge = new THREE.Mesh(new THREE.RingGeometry(size*0.42,size*0.46,48), new THREE.MeshStandardMaterial({color:0xb6a886,side:THREE.DoubleSide}));
+    edge.rotation.x = -Math.PI/2; edge.position.y = 0.025; shellGroup.add(edge);     // 광장 테두리
+    const path = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.05,size*0.55), new THREE.MeshStandardMaterial({color:0xd2c7ad}));
+    path.position.set(0,0.02,-size*0.32); shellGroup.add(path);        // 타운홀로 가는 길
+  } else {
+    scene.background = new THREE.Color(0xf2e9d6);                       // 실내 크림
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(size,0.3,size), new THREE.MeshStandardMaterial({color:0xd9c8a2}));
+    floor.position.y = -0.15; shellGroup.add(floor);
+    const grid = new THREE.GridHelper(size,size,0xb09a6a,0xcbbb95); grid.position.y = 0.011; shellGroup.add(grid);
+    const mkWall = (w,h,x,z,ry,c)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+      new THREE.MeshStandardMaterial({color:c,side:THREE.DoubleSide})); m.position.set(x,h/2,z); m.rotation.y=ry; shellGroup.add(m); };
+    mkWall(size,4,0,-size/2,0,0xe7dabf); mkWall(size,4,-size/2,0,Math.PI/2,0xdccba3);
+  }
 }
 
 // ===== 가구 카탈로그 =====
@@ -263,6 +275,35 @@ const FURNITURE = {
     sh.position.y=1.5; g.add(sh); const lp=new THREE.PointLight(0xffe9b0,0.5,7); lp.position.y=1.4; g.add(lp); return g; },
   picture(o){ const g=new THREE.Group(); g.add(fbox(1,0.7,0.06,'#5a4a35')); g.add(fbox(0.85,0.55,0.07,o.color||'#9ab0c8')); g.position.y=2.2; return g; },
   window(o){ const g=new THREE.Group(); g.add(fbox(0.1,1.4,1.6,'#6a5a45')); g.add(fbox(0.05,1.2,1.4,'#add3e6')); g.position.y=2.0; return g; },
+  // ── 야외 오브젝트 ──
+  townhall(o){ const g=new THREE.Group();
+    const base=fbox(4.2,2.6,2.2,'#e9e0cf'); base.position.y=1.3; g.add(base);
+    const roof=fbox(4.8,0.4,2.6,'#9a5a45'); roof.position.y=2.7; g.add(roof);
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(0.001,1.5,1.0,4), fmat('#a5634c')); // 삼각 페디먼트(피라미드)
+    ped.rotation.y=Math.PI/4; ped.scale.set(2.0,1,1.3); ped.position.y=3.2; g.add(ped);
+    [-1.6,-0.55,0.55,1.6].forEach(x=>{ const c=fcyl(0.16,0.16,2.2,'#f3ece0'); c.position.set(x,1.2,1.15); g.add(c); }); // 기둥
+    const door=fbox(0.9,1.5,0.12,'#6a4a30'); door.position.set(0,0.75,1.18); g.add(door);
+    const clock=new THREE.Mesh(new THREE.CircleGeometry(0.34,24), new THREE.MeshStandardMaterial({color:0xf5f0e0})); clock.position.set(0,3.0,1.34); g.add(clock);
+    const sign=sprite('🏛 타운홀',34,'#5a4a35'); sign.scale.set(2.6,1.0,1); sign.position.set(0,4.3,0); g.add(sign);
+    return g; },
+  fountain(o){ const g=new THREE.Group();
+    const basin=fcyl(1.2,1.3,0.4,'#b9b2a2'); basin.position.y=0.2; g.add(basin);
+    const water=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.05,0.12,24), new THREE.MeshStandardMaterial({color:0x6fb6d8,transparent:true,opacity:0.85})); water.position.y=0.42; g.add(water);
+    const pillar=fcyl(0.18,0.22,0.9,'#cfc7b6'); pillar.position.y=0.85; g.add(pillar);
+    const top=fcyl(0.5,0.45,0.18,'#b9b2a2'); top.position.y=1.32; g.add(top);
+    const tw=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,0.08,20), new THREE.MeshStandardMaterial({color:0x7cc0e0,transparent:true,opacity:0.85})); tw.position.y=1.42; g.add(tw);
+    const spout=new THREE.Mesh(new THREE.SphereGeometry(0.12,12,10), new THREE.MeshStandardMaterial({color:0x9ad6ee,transparent:true,opacity:0.8})); spout.position.y=1.62; g.add(spout);
+    return g; },
+  tree(o){ const g=new THREE.Group(); const tr=fcyl(0.16,0.22,1.2,'#7a5235'); tr.position.y=0.6; g.add(tr);
+    const f1=new THREE.Mesh(new THREE.SphereGeometry(0.8,14,12), fmat('#4f8a46')); f1.position.y=1.6; g.add(f1);
+    const f2=new THREE.Mesh(new THREE.SphereGeometry(0.55,14,12), fmat('#5fa055')); f2.position.set(0.5,1.4,0.2); g.add(f2);
+    const f3=new THREE.Mesh(new THREE.SphereGeometry(0.5,14,12), fmat('#5a9a4e')); f3.position.set(-0.45,1.45,-0.1); g.add(f3); return g; },
+  lamppost(o){ const g=new THREE.Group(); const pole=fcyl(0.07,0.09,2.4,'#3a3a3a'); pole.position.y=1.2; g.add(pole);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(0.18,14,12), new THREE.MeshStandardMaterial({color:0xfff2c0,emissive:0xffe9a0,emissiveIntensity:0.8})); head.position.y=2.45; g.add(head);
+    const lp=new THREE.PointLight(0xffe9b0,0.45,8); lp.position.y=2.45; g.add(lp); return g; },
+  bench(o){ const c=o.color||'#8a6f4f', g=new THREE.Group(); const seat=fbox(1.4,0.1,0.45,c); seat.position.y=0.45; g.add(seat);
+    const back=fbox(1.4,0.4,0.1,c); back.position.set(0,0.7,-0.18); g.add(back);
+    [-0.6,0.6].forEach(x=>{ const l=fbox(0.1,0.45,0.45,'#5a4a35'); l.position.set(x,0.22,0); g.add(l); }); return g; },
 };
 let furnitureGroup = new THREE.Group(); scene.add(furnitureGroup);
 function buildFurniture(items){
@@ -317,7 +358,7 @@ function esc(s){ const d=document.createElement('div'); d.textContent=s; return 
 async function loadRoom(place){
   let data; try { data=await (await fetch('/room?place='+place)).json(); } catch(e){ return; }
   roomSize = data.room_size || 8; radius = roomSize*0.28; makeCamera(); controls.object=camera;
-  buildShell(roomSize); buildFurniture(data.items);
+  buildShell(roomSize, data.scene || 'indoor'); buildFurniture(data.items);
 }
 
 async function poll(){
