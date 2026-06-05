@@ -339,18 +339,32 @@ function sprite(text, px, color){
 let avatars = {};
 function clearAvatars(){ for(const id in avatars){ scene.remove(avatars[id].group); } avatars = {}; }
 function placeCell(i, n){ if(n===1) return [0,0]; const a=-Math.PI/2 + i*(2*Math.PI/n); return [radius*Math.cos(a), radius*Math.sin(a)]; }
+// 팔/다리: 윗부분(어깨/엉덩이)을 피벗으로 회전하게 — 피벗 그룹 + 아래로 내린 박스
+function limbPivot(px,py,pz, w,h,d, color, offy){
+  const pivot=new THREE.Group(); pivot.position.set(px,py,pz);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshStandardMaterial({color})); m.position.y=offy; m.castShadow=true;
+  pivot.add(m); return pivot;
+}
 function makeAvatar(a, i, n, idx){
   const group=new THREE.Group(); const [x,z]=placeCell(i,n); group.position.set(x,0,z);
-  const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.32,0.7,4,12), new THREE.MeshStandardMaterial({color:PALETTE[idx%PALETTE.length]}));
-  body.position.y=0.75; body.castShadow=true; group.add(body);
-  const emo=sprite(a.emoji,92); emo.scale.set(0.9,0.9,0.9); emo.position.y=2.0; group.add(emo);
+  const shirt=PALETTE[idx%PALETTE.length], skin=0xe8c39a, pants=0x3f4a6a;
+  const bodyGroup=new THREE.Group(); group.add(bodyGroup);  // 통째로 살짝 bob
+  // 마인크래프트풍 블록 휴머노이드 (발 y=0 기준)
+  const legL=limbPivot(-0.13,0.7,0, 0.2,0.7,0.22, pants, -0.35);
+  const legR=limbPivot( 0.13,0.7,0, 0.2,0.7,0.22, pants, -0.35);
+  const armL=limbPivot(-0.34,1.3,0, 0.16,0.6,0.2, shirt, -0.3);
+  const armR=limbPivot( 0.34,1.3,0, 0.16,0.6,0.2, shirt, -0.3);
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.28), new THREE.MeshStandardMaterial({color:shirt})); torso.position.y=1.0; torso.castShadow=true;
+  const head=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshStandardMaterial({color:skin})); head.position.y=1.55; head.castShadow=true;
+  bodyGroup.add(legL,legR,armL,armR,torso,head);
+  const emo=sprite(a.emoji,92); emo.scale.set(0.9,0.9,0.9); emo.position.y=2.25; group.add(emo);  // 머리 위 감정
   const nm=sprite(a.name+(a.is_mine?' ★':''),30,a.is_mine?'#c4621f':'#5a5444'); nm.scale.set(1.6,0.8,1); nm.position.y=-0.05; group.add(nm);
   if(a.is_mine){ const ring=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.05,8,32), new THREE.MeshStandardMaterial({color:ACCENT}));
     ring.rotation.x=Math.PI/2; ring.position.y=0.02; group.add(ring); }
   const pulse=new THREE.Mesh(new THREE.RingGeometry(0.5,0.62,32), new THREE.MeshBasicMaterial({color:ACCENT,transparent:true,opacity:0,side:THREE.DoubleSide}));
   pulse.rotation.x=-Math.PI/2; pulse.position.y=0.03; group.add(pulse);
   scene.add(group);
-  avatars[a.id]={group,body,emo,pulse,emoji:a.emoji,speaking:a.speaking,phase:Math.random()*6.28};
+  avatars[a.id]={group,body:bodyGroup,emo,pulse,emoji:a.emoji,speaking:a.speaking,phase:Math.random()*6.28,limbs:{legL,legR,armL,armR},swing:0};
 }
 function updateAvatar(a){ const av=avatars[a.id];
   if(av.emoji!==a.emoji){ av.emo.material.map.dispose(); av.emo.material=sprite(a.emoji,92).material; av.emoji=a.emoji; } av.speaking=a.speaking; }
@@ -386,8 +400,12 @@ function animate(){ requestAnimationFrame(animate);
     }
     if(av.speaking && watching){ const ph=(elapsed%1.2)/1.2; av.pulse.scale.setScalar(1+ph*1.8); av.pulse.material.opacity=0.5*(1-ph); }
     else { av.pulse.material.opacity=0; }
-    const amp = walking?0.07:0.03;   // 걸을 때만 발걸음 bob, 쉴 땐 잔잔하게
-    av.body.position.y = 0.75 + (watching?Math.sin(elapsed*(walking?6:1.5)+(av.phase||0))*amp:0);
+    const amp = walking?0.06:0.02;   // 걸을 때만 발걸음 bob, 쉴 땐 잔잔하게
+    av.body.position.y = watching ? Math.sin(elapsed*(walking?6:1.5)+(av.phase||0))*amp : 0;
+    // 팔다리 스윙(걸을 때만, 멈추면 0으로 부드럽게)
+    const targetSwing = walking ? Math.sin(elapsed*8 + (av.phase||0))*0.5 : 0;
+    av.swing += (targetSwing - av.swing) * Math.min(1, dt*10);
+    if(av.limbs){ av.limbs.legL.rotation.x=av.swing; av.limbs.legR.rotation.x=-av.swing; av.limbs.armL.rotation.x=-av.swing; av.limbs.armR.rotation.x=av.swing; }
   }
   renderer.toneMappingExposure = watching?1:0.7; controls.update(); renderer.render(scene,camera); }
 function resize(){ const r=cv.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); makeCamera(); controls.object=camera; }
