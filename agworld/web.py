@@ -409,7 +409,9 @@ function animate(){ requestAnimationFrame(animate);
       } else {
         const dx=av.tx-g.position.x, dz=av.tz-g.position.z, d=Math.hypot(dx,dz);
         if(d<0.12){ av.mode='idle'; av.until=elapsed + 2 + Math.random()*4; }   // 도착 → 2~6초 쉼
-        else { const step=Math.min(WANDER_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; walking=true; }
+        else { const step=Math.min(WANDER_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; walking=true;
+          // 진행 방향으로 회전(+z가 정면). 최단 경로로 부드럽게.
+          let diff=Math.atan2(dx,dz)-g.rotation.y; diff=Math.atan2(Math.sin(diff),Math.cos(diff)); g.rotation.y+=diff*Math.min(1,dt*6); }
       }
     }
     if(av.speaking && watching){ const ph=(elapsed%1.2)/1.2; av.pulse.scale.setScalar(1+ph*1.8); av.pulse.material.opacity=0.5*(1-ph); }
