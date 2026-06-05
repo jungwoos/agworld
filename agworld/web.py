@@ -202,6 +202,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const PALETTE = [0x6fa8a0,0xb08a6f,0xe0a36f,0x8f9bd0,0xc08fb0,0xa0b07a,0xd0a060,0x70b0c0,0xc09070,0x90c090];
+const HAIRS = [0x2b2118,0x4a3526,0x1a1a1a,0x6b4a2f,0x5c3a1e,0x8a6a3a,0x3a2a1a,0x705038,0x4a4a4a,0x2a1c14];
 const ACCENT = 0xe0742f;
 
 const cv = document.getElementById('scene');
@@ -356,7 +357,14 @@ function makeAvatar(a, i, n, idx){
   const armR=limbPivot( 0.34,1.3,0, 0.16,0.6,0.2, shirt, -0.3);
   const torso=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.28), new THREE.MeshStandardMaterial({color:shirt})); torso.position.y=1.0; torso.castShadow=true;
   const head=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshStandardMaterial({color:skin})); head.position.y=1.55; head.castShadow=true;
-  bodyGroup.add(legL,legR,armL,armR,torso,head);
+  // 머리카락(에이전트별 색) + 눈
+  const hairCol=HAIRS[idx%HAIRS.length], hairMat=new THREE.MeshStandardMaterial({color:hairCol});
+  const hairTop=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.16,0.54),hairMat); hairTop.position.y=1.74; hairTop.castShadow=true;
+  const hairBack=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.34,0.12),hairMat); hairBack.position.set(0,1.55,-0.23); hairBack.castShadow=true;
+  const eyeMat=new THREE.MeshStandardMaterial({color:0x2a2622});
+  const eyeL=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.12,0.04),eyeMat); eyeL.position.set(-0.1,1.58,0.255);
+  const eyeR=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.12,0.04),eyeMat); eyeR.position.set(0.1,1.58,0.255);
+  bodyGroup.add(legL,legR,armL,armR,torso,head,hairTop,hairBack,eyeL,eyeR);
   const emo=sprite(a.emoji,92); emo.scale.set(0.9,0.9,0.9); emo.position.y=2.25; group.add(emo);  // 머리 위 감정
   const nm=sprite(a.name+(a.is_mine?' ★':''),30,a.is_mine?'#c4621f':'#5a5444'); nm.scale.set(1.6,0.8,1); nm.position.y=-0.05; group.add(nm);
   if(a.is_mine){ const ring=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.05,8,32), new THREE.MeshStandardMaterial({color:ACCENT}));
