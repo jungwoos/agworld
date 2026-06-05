@@ -364,10 +364,16 @@ function makeAvatar(a, i, n, idx){
   const pulse=new THREE.Mesh(new THREE.RingGeometry(0.5,0.62,32), new THREE.MeshBasicMaterial({color:ACCENT,transparent:true,opacity:0,side:THREE.DoubleSide}));
   pulse.rotation.x=-Math.PI/2; pulse.position.y=0.03; group.add(pulse);
   scene.add(group);
-  avatars[a.id]={group,body:bodyGroup,emo,pulse,emoji:a.emoji,speaking:a.speaking,phase:Math.random()*6.28,limbs:{legL,legR,armL,armR},swing:0};
+  emo.material.opacity=0; emo.visible=false;   // 평소 숨김, 감정 바뀔 때만 팝
+  avatars[a.id]={group,body:bodyGroup,emo,pulse,emoji:a.emoji,speaking:a.speaking,phase:Math.random()*6.28,limbs:{legL,legR,armL,armR},swing:0,emoShownAt:elapsed};
 }
 function updateAvatar(a){ const av=avatars[a.id];
-  if(av.emoji!==a.emoji){ av.emo.material.map.dispose(); av.emo.material=sprite(a.emoji,92).material; av.emoji=a.emoji; } av.speaking=a.speaking; }
+  if(av.emoji!==a.emoji){ av.emo.material.map.dispose(); av.emo.material=sprite(a.emoji,92).material; av.emoji=a.emoji; av.emoShownAt=elapsed; } // 감정 바뀜 → 다시 팝
+  av.speaking=a.speaking; }
+// 감정 이모지 표시 곡선: 0~3초 풀, 3~4초 페이드, 이후 숨김
+const EMO_FULL=3.0, EMO_FADE=1.0;
+function emoOpacity(shownAt){ if(shownAt===undefined) return 0; const age=elapsed-shownAt;
+  return age<EMO_FULL ? 1 : (age<EMO_FULL+EMO_FADE ? 1-(age-EMO_FULL)/EMO_FADE : 0); }
 
 let STATE=null, currentPlace=null, currentScene='indoor', ready=false;
 function syncScene(){ if(!STATE) return; const n=STATE.agents.length;
@@ -406,6 +412,8 @@ function animate(){ requestAnimationFrame(animate);
     const targetSwing = walking ? Math.sin(elapsed*8 + (av.phase||0))*0.5 : 0;
     av.swing += (targetSwing - av.swing) * Math.min(1, dt*10);
     if(av.limbs){ av.limbs.legL.rotation.x=av.swing; av.limbs.legR.rotation.x=-av.swing; av.limbs.armL.rotation.x=-av.swing; av.limbs.armR.rotation.x=av.swing; }
+    // 감정 이모지: 바뀐 뒤 3초 보이고 페이드아웃
+    const eop = emoOpacity(av.emoShownAt); av.emo.material.opacity=eop; av.emo.visible = eop>0.01;
   }
   renderer.toneMappingExposure = watching?1:0.7; controls.update(); renderer.render(scene,camera); }
 function resize(){ const r=cv.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); makeCamera(); controls.object=camera; }
