@@ -207,8 +207,11 @@ const ACCENT = 0xe0742f;
 const cv = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf2e9d6);
+function setShadow(obj, cast, recv){ obj.traverse(m=>{ if(m.isMesh){ m.castShadow=cast; m.receiveShadow=recv; } }); }
 
 let roomSize = 8, radius = 2.4, camera;
 function makeCamera(){
@@ -221,13 +224,23 @@ makeCamera();
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enablePan = false; controls.minPolarAngle = 0.3; controls.maxPolarAngle = 1.35; controls.target.set(0,1,0);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-const dir = new THREE.DirectionalLight(0xfff2dd, 0.9); dir.position.set(6,14,4); scene.add(dir);
+// 자연광: 하늘광(HemisphereLight) + 태양(그림자 캐스팅 DirectionalLight)
+const hemi = new THREE.HemisphereLight(0xbfe3f2, 0x8a9a6a, 0.6); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1d8, 1.7); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.02;
+scene.add(sun); scene.add(sun.target);
+function tuneSun(size, sceneType){
+  sun.position.set(size*0.85, size*1.6, size*0.7); sun.target.position.set(0, 0, 0);
+  const c = sun.shadow.camera; c.left=-size; c.right=size; c.top=size; c.bottom=-size; c.near=1; c.far=size*5; c.updateProjectionMatrix();
+  if(sceneType === 'outdoor'){ hemi.color.set(0xbfe3f2); hemi.groundColor.set(0x7d9a5a); hemi.intensity=0.7; sun.color.set(0xfff1d8); sun.intensity=1.9; }
+  else { hemi.color.set(0xf3e8d2); hemi.groundColor.set(0xb0a080); hemi.intensity=0.85; sun.color.set(0xffe9c8); sun.intensity=1.15; }
+}
 
 // ===== 씬 셸 — 장소 크기/테마에 맞춰 재생성 (indoor=방, outdoor=잔디 광장) =====
 let shellGroup = new THREE.Group(); scene.add(shellGroup);
 function buildShell(size, sceneType){
   scene.remove(shellGroup); shellGroup = new THREE.Group(); scene.add(shellGroup);
+  tuneSun(size, sceneType);
   if(sceneType === 'outdoor'){
     scene.background = new THREE.Color(0xbfe3f2);                       // 하늘
     const grass = new THREE.Mesh(new THREE.BoxGeometry(size*1.9,0.3,size*1.9), new THREE.MeshStandardMaterial({color:0x86b96a}));
@@ -247,6 +260,7 @@ function buildShell(size, sceneType){
       new THREE.MeshStandardMaterial({color:c,side:THREE.DoubleSide})); m.position.set(x,h/2,z); m.rotation.y=ry; shellGroup.add(m); };
     mkWall(size,4,0,-size/2,0,0xe7dabf); mkWall(size,4,-size/2,0,Math.PI/2,0xdccba3);
   }
+  setShadow(shellGroup, false, true);   // 바닥/잔디/광장/벽은 그림자를 '받음'
 }
 
 // ===== 가구 카탈로그 =====
@@ -310,6 +324,7 @@ function buildFurniture(items){
   scene.remove(furnitureGroup); furnitureGroup = new THREE.Group(); scene.add(furnitureGroup);
   (items||[]).forEach(it=>{ const b=FURNITURE[it.item]; if(!b) return; const g=b(it);
     g.position.x+=(it.x||0); g.position.z+=(it.z||0); if(it.ry) g.rotation.y=it.ry*Math.PI/180; if(it.scale) g.scale.multiplyScalar(it.scale); furnitureGroup.add(g); });
+  setShadow(furnitureGroup, true, true);   // 가구/타운홀/나무는 그림자를 '드리움'
 }
 
 // ===== 스프라이트(이모지/이름) =====
@@ -327,7 +342,7 @@ function placeCell(i, n){ if(n===1) return [0,0]; const a=-Math.PI/2 + i*(2*Math
 function makeAvatar(a, i, n, idx){
   const group=new THREE.Group(); const [x,z]=placeCell(i,n); group.position.set(x,0,z);
   const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.32,0.7,4,12), new THREE.MeshStandardMaterial({color:PALETTE[idx%PALETTE.length]}));
-  body.position.y=0.75; group.add(body);
+  body.position.y=0.75; body.castShadow=true; group.add(body);
   const emo=sprite(a.emoji,92); emo.scale.set(0.9,0.9,0.9); emo.position.y=2.0; group.add(emo);
   const nm=sprite(a.name+(a.is_mine?' ★':''),30,a.is_mine?'#c4621f':'#5a5444'); nm.scale.set(1.6,0.8,1); nm.position.y=-0.05; group.add(nm);
   if(a.is_mine){ const ring=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.05,8,32), new THREE.MeshStandardMaterial({color:ACCENT}));

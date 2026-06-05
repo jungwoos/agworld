@@ -13,7 +13,12 @@
       "Bash(python3 -m agworld --live --interval 1)",
       "Bash(python3 -m py_compile agworld/cli.py)",
       "Bash(python3 -c ' *)",
-      "Bash(node --check /tmp/prev.mjs)"
+      "Bash(node --check /tmp/prev.mjs)",
+      "Bash(python3 -c \"import re;h=open\\('/tmp/agworld-town-preview.html',encoding='utf-8'\\).read\\(\\);m=re.search\\(r'<script type=\\\\\"module\\\\\">\\(.*?\\)</script>',h,re.S\\);open\\('/tmp/t.mjs','w'\\).write\\(m.group\\(1\\)\\)\")",
+      "Bash(node --check /tmp/t.mjs)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
