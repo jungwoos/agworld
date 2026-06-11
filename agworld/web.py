@@ -53,7 +53,7 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
 
 
         def _serve_static(self, file_path):
-            import os, mimetypes
+            import mimetypes
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
                 self.send_response(404)
                 self.end_headers()
