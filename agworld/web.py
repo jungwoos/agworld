@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
 import os
@@ -24,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .places import build_places, places_meta
 from .room import room_dict
+from .room_config import get_agent_secrets
 from .webstate import get_room_config, submit_whisper, update_room_config, world_state_dict
 
 # 로컬 벤더 파일(three.module.js 등) 경로 — CDN 의존 제거
@@ -35,6 +37,19 @@ def _place_param(path: str, places: dict) -> str:
     q = parse_qs(urlparse(path).query)
     pid = (q.get("place", [None])[0])
     return pid if pid in places else next(iter(places))
+
+
+def _viewer_param(path: str) -> str | None:
+    """쿼리의 me+key를 입장 키와 대조해 보는 사람의 에이전트 id 반환. 불일치 시 None(관전)."""
+    q = parse_qs(urlparse(path).query)
+    me = (q.get("me", [None])[0] or "").strip()
+    key = (q.get("key", [None])[0] or "").strip()
+    if not me or not key:
+        return None
+    secret = get_agent_secrets().get(me)
+    if secret and hmac.compare_digest(key, secret):
+        return me
+    return None
 
 
 def make_handler(places: dict, lock: threading.Lock, shared: dict):
@@ -87,8 +102,9 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
             elif route == "/state":
                 pid = _place_param(self.path, places)
                 shared["last_poll"][pid] = time.monotonic()
+                viewer = _viewer_param(self.path)
                 with lock:
-                    self._json(world_state_dict(places[pid]["world"]))
+                    self._json(world_state_dict(places[pid]["world"], viewer_id=viewer))
             elif route == "/room":
                 self._json(room_dict(_place_param(self.path, places)))
             elif route == "/room/config":
@@ -107,8 +123,9 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
                 except json.JSONDecodeError:
                     payload = {}
                 shared["last_poll"][pid] = time.monotonic()
+                viewer = _viewer_param(self.path)
                 with lock:
-                    result = submit_whisper(places[pid]["world"], str(payload.get("text", "")))
+                    result = submit_whisper(places[pid]["world"], str(payload.get("text", "")), viewer_id=viewer)
                 self._json(result)
             elif route == "/room/config":
                 length = int(self.headers.get("Content-Length", 0))
@@ -166,6 +183,11 @@ def serve(places: dict | None = None, host: str = "127.0.0.1", port: int = 8765,
     url = f"http://{host}:{port}/"
     print(f"✅ AG-World 3D 웹뷰 실행 중 → 브라우저에서 열기: {url}", flush=True)
     print(f"   장소: {', '.join(p['title'] for p in places.values())} · 틱 {interval:.0f}초 · Ctrl-C 종료", flush=True)
+    # 에이전트별 입장 링크(키 없이 접속하면 관전 모드)
+    names = {a.id: a.name for p in places.values() for a in p["world"].agents}
+    print("🔑 입장 링크 (각자 자기 링크로 접속):", flush=True)
+    for aid, secret in get_agent_secrets().items():
+        print(f"   {names.get(aid, aid)} → {url}?me={aid}&key={secret}", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -230,7 +252,7 @@ PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
   <div class="whisper">
-    <span class="lab">🤫 <span id="whomLabel">내 에이전트</span>에게 속삭이기</span>
+    <span class="lab" id="wLab">🤫 <span id="whomLabel">내 에이전트</span>에게 속삭이기</span>
     <input id="wInput" placeholder="예: 루리한테 너무 몰아세우지 말라고 해줘" autocomplete="off">
     <button id="wSend">속삭임</button>
   </div>
@@ -258,6 +280,12 @@ PAGE = r"""<!DOCTYPE html>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// 입장 키: URL의 ?me=&key=를 localStorage에 기억 → 이후엔 주소만 쳐도 유지. 키 없으면 관전 모드.
+const _q = new URLSearchParams(location.search);
+if(_q.get('me') && _q.get('key')){ localStorage.setItem('agw_me', _q.get('me')); localStorage.setItem('agw_key', _q.get('key')); }
+const ME = localStorage.getItem('agw_me') || '', MEKEY = localStorage.getItem('agw_key') || '';
+const AUTH = ME ? ('&me='+encodeURIComponent(ME)+'&key='+encodeURIComponent(MEKEY)) : '';
 
 const PALETTE = [0x6fa8a0,0xb08a6f,0xe0a36f,0x8f9bd0,0xc08fb0,0xa0b07a,0xd0a060,0x70b0c0,0xc09070,0x90c090];
 const HAIRS = [0x2b2118,0x4a3526,0x1a1a1a,0x6b4a2f,0x5c3a1e,0x8a6a3a,0x3a2a1a,0x705038,0x4a4a4a,0x2a1c14];
@@ -496,14 +524,30 @@ async function loadRoom(place){
   buildShell(roomSize, currentScene); buildFurniture(data.items);
 }
 
+// 보는 사람 UI: 내 에이전트면 속삭임 활성, 아니면 관전 모드로 잠금
+let _lastViewer = '__init__';
+function applyViewerUI(my){
+  const cur = my ? my.id : null;
+  if(cur === _lastViewer) return; _lastViewer = cur;
+  const lab=document.getElementById('wLab'), wIn=document.getElementById('wInput'), wBtn=document.getElementById('wSend');
+  if(my){
+    lab.innerHTML='🤫 <span id="whomLabel">'+esc(my.name)+'</span>에게 속삭이기';
+    wIn.disabled=false; wBtn.disabled=false;
+  } else {
+    lab.textContent='👀 관전 모드';
+    wIn.disabled=true; wIn.placeholder='내 에이전트 입장 링크(?me=…&key=…)로 접속하면 속삭일 수 있어요';
+    wBtn.disabled=true;
+  }
+}
+
 async function poll(){
   if(!currentPlace) return;
-  let s; try { s=await (await fetch('/state?place='+currentPlace)).json(); }
+  let s; try { s=await (await fetch('/state?place='+currentPlace+AUTH)).json(); }
   catch(e){ document.getElementById('status').textContent='서버 연결 끊김'; return; }
   STATE=s;
   if(!ready){ ready=true; document.getElementById('loading').style.display='none'; }
   document.getElementById('status').textContent=(s.watching?'관전 중':'자는 중 💤')+` · 틱 ${s.t} · $${s.cost}`;
-  if(s.my_agent) document.getElementById('whomLabel').textContent=s.my_agent.name;
+  applyViewerUI(s.my_agent);
   syncScene();
   const feed=document.getElementById('feed'); let html='', lastT=null;
   if(s.feed.length===0) html='<div class="tk">(아직 조용하다...)</div>';
@@ -532,7 +576,7 @@ async function buildTabs(){
 
 async function sendWhisper(){
   const inp=document.getElementById('wInput'), text=inp.value.trim(); if(!text||!currentPlace) return; inp.value='';
-  try { const r=await (await fetch('/whisper?place='+currentPlace,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})).json();
+  try { const r=await (await fetch('/whisper?place='+currentPlace+AUTH,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})).json();
     document.getElementById('hint').textContent=(r.ok?'🤫 ':'⏳ ')+r.message; } catch(e){ document.getElementById('hint').textContent='전송 실패'; }
 }
 document.getElementById('wSend').onclick=sendWhisper;

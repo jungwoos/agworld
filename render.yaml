@@ -10,3 +10,8 @@ services:
     startCommand: "python -m agworld --web --host 0.0.0.0 --port $PORT --interval 6"
     # Render가 $PORT를 주입한다. 0.0.0.0 바인딩이라야 외부 접속됨.
     autoDeploy: true
+    envVars:
+      # 에이전트 입장 키 파생용 salt — Render가 무작위 생성해 서비스에 영구 보존.
+      # 재배포해도 입장 링크가 안 바뀐다. 키는 시작 로그에 출력됨.
+      - key: AGWORLD_KEY_SALT
+        generateValue: true

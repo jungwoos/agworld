@@ -21,11 +21,64 @@ Config 스키마:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac as _hmac
 import json
+import os
+import secrets as _secrets
 from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "room_config.json"
+
+# 입장 키 파생용 salt. 설정돼 있으면 키를 여기서 파생(저장소/디스크에 비밀 없음).
+# Render처럼 디스크가 휘발성인 환경에서도 재배포 간 키가 안 바뀐다.
+KEY_SALT_ENV = "AGWORLD_KEY_SALT"
+
+
+def _gen_secret() -> str:
+    """에이전트 입장 키 생성 (URL-safe, 8자)."""
+    return _secrets.token_urlsafe(6)
+
+
+def _derived_secret(agent_id: str, salt: str) -> str:
+    """salt + agent_id에서 결정론적으로 입장 키 파생 (URL-safe, 8자)."""
+    digest = _hmac.new(salt.encode(), agent_id.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest)[:8].decode()
+
+
+def ensure_agent_secrets(config: dict[str, Any]) -> bool:
+    """secret이 없는 에이전트에 새 키를 채운다. 변경이 있었으면 True."""
+    changed = False
+    for a in config.get("room", {}).get("agents", []):
+        if not a.get("secret"):
+            a["secret"] = _gen_secret()
+            changed = True
+    return changed
+
+
+def get_agent_secrets(path: Path | str | None = None) -> dict[str, str]:
+    """agent_id -> secret 맵.
+
+    AGWORLD_KEY_SALT가 설정돼 있으면 키를 파생(파일에 안 씀).
+    없으면(로컬 개발) 파일에 생성해 저장한다.
+    """
+    config = load_room_config(path)
+    salt = os.environ.get(KEY_SALT_ENV)
+    if salt:
+        return {a["id"]: _derived_secret(a["id"], salt) for a in config["room"]["agents"]}
+    if ensure_agent_secrets(config):
+        save_room_config(config, path)
+    return {a["id"]: a["secret"] for a in config["room"]["agents"]}
+
+
+def strip_secrets(config: dict[str, Any]) -> dict[str, Any]:
+    """클라이언트 응답용 — secret을 제거한 사본을 반환한다."""
+    public = json.loads(json.dumps(config))
+    for a in public.get("room", {}).get("agents", []):
+        a.pop("secret", None)
+    return public
 
 
 def _default_room_config() -> dict[str, Any]:

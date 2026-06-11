@@ -12,3 +12,6 @@ snap.json
 # OS
 .DS_Store
 *.tmp
+
+# 런타임 설정(에이전트 입장 키 포함) — 저장소에 비밀 금지
+room_config.json

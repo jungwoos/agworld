@@ -30,12 +30,14 @@ class WhisperQueue:
         self._pending: dict[str, deque[str]] = {}
         self._rate_limit = rate_limit
         self._rate_window = rate_window_ticks
-        self._recent_tick_stamps: deque[int] = deque()
+        # 레이트 리밋은 대상별 — 각자 자기 에이전트에게 속삭이므로 유저별 분리 효과
+        self._recent_tick_stamps: dict[str, deque[int]] = {}
 
     def enqueue(self, target_id: str, raw_text: str, current_tick: int) -> None:
         """귓속말을 대상 큐에 넣는다. 레이트 리밋 초과 시 RateLimited."""
-        self._evict_old(current_tick)
-        if len(self._recent_tick_stamps) >= self._rate_limit:
+        stamps = self._recent_tick_stamps.setdefault(target_id, deque())
+        self._evict_old(stamps, current_tick)
+        if len(stamps) >= self._rate_limit:
             raise RateLimited(
                 f"분당 {self._rate_limit}회 제한. 잠시 후 다시 속삭여줘."
             )
@@ -43,7 +45,7 @@ class WhisperQueue:
         if not clean:
             return  # 빈 귓속말은 조용히 무시(레이트 카운트도 안 함)
         self._pending.setdefault(target_id, deque()).append(clean)
-        self._recent_tick_stamps.append(current_tick)
+        stamps.append(current_tick)
 
     def pop_for(self, agent_id: str) -> str | None:
         """대상의 다음 보류 귓속말을 꺼낸다(FIFO). 없으면 None."""
@@ -61,7 +63,7 @@ class WhisperQueue:
         q = self._pending.get(agent_id)
         return bool(q)
 
-    def _evict_old(self, current_tick: int) -> None:
+    def _evict_old(self, stamps: deque[int], current_tick: int) -> None:
         cutoff = current_tick - self._rate_window
-        while self._recent_tick_stamps and self._recent_tick_stamps[0] <= cutoff:
-            self._recent_tick_stamps.popleft()
+        while stamps and stamps[0] <= cutoff:
+            stamps.popleft()
