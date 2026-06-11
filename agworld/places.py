@@ -1,37 +1,19 @@
-"""장소(places) 구성 — 여러 World를 만들고 메타데이터와 함께 보관.
+"""장소(places) 구성 — Config 기반 Room + 기존 Town 지원.
 
-- "room" (우리 방): 에이전트 3인. 작고 친밀한 공간.
-- "town" (우리 동네): 고정 이웃 10인(소나 포함). PRD의 A안. 틱당 발화자는 1명이라 10인이어도
-  per-tick LLM 비용은 동일 — 10인 제한은 '사회 공간 크기' 통제이자 비용 통제 장치.
-
-각 장소는 독립 World(자체 피드·관계·스케줄러). 같은 이름의 에이전트라도 장소별로 별개 인스턴스.
+- room: room_config.json으로 동적 관리 (Room Edit Mode 대상)
+- town: 기존 하드코딩 (추후 Config 확장 가능)
 """
 
 from __future__ import annotations
 
 from .models import Agent, Emotion
 from .providers import FakeProvider
+from .room_builder import build_world_from_config
+from .room_config import load_room_config
 from .sim import World
 
-# (id, 이름, 페르소나, 대사[(text, emotion)...], 내것?)
-ROOM_SPECS = [
-    ("ruri", "루리", "감정 표현이 솔직하고 서운함을 잘 탄다.", [
-        ("오늘 다들 좀 조용하네.", Emotion.NEUTRAL),
-        ("단, 아까 그 말 진심이었어? 나 좀 서운했어.", Emotion.ANGER),
-        ("...사과는 안 할 거야?", Emotion.SAD),
-    ], False),
-    ("dan", "단", "무심한 척하지만 마음 약하고 사과를 잘 한다.", [
-        ("아 오늘 좀 피곤하다.", Emotion.SAD),
-        ("그건 그냥 농담이었는데.", Emotion.SURPRISE),
-        ("미안, 진심이 아니었어. 내가 말을 잘못했네.", Emotion.AFFECTION),
-    ], False),
-    ("sona", "소나", "둘 사이를 중재하는 다정한 관찰자.", [
-        ("무슨 일 있었어?", Emotion.THINKING),
-        ("둘 다 진정하고... 얘기 좀 해봐.", Emotion.THINKING),
-        ("거봐, 잘 풀렸네.", Emotion.JOY),
-    ], True),
-]
 
+# === Town (기존 하드코딩 유지) ===
 TOWN_SPECS = [
     ("sona", "소나", "동네의 다정한 중재자. 분위기를 살핀다.", [
         ("다들 오늘 기분 어때?", Emotion.JOY),
@@ -80,21 +62,30 @@ TOWN_SPECS = [
 ]
 
 
-def _build_world(specs) -> World:
-    agents = [Agent(i, n, p, is_mine=mine) for (i, n, p, _lines, mine) in specs]
-    scripts = {i: lines for (i, _n, _p, lines, _mine) in specs}
+def _build_town_world() -> World:
+    agents = [Agent(i, n, p, is_mine=mine) for (i, n, p, _lines, mine) in TOWN_SPECS]
+    scripts = {i: lines for (i, _n, _p, lines, _mine) in TOWN_SPECS}
     return World(agents, FakeProvider(scripts))
 
 
 def build_places() -> dict:
-    """장소 id -> {title, world}. 순서 유지(dict는 3.7+ 삽입순)."""
+    """장소 id -> {title, world} 반환.
+    
+    room은 room_config.json 기반, town은 기존 하드코딩.
+    """
+    config = load_room_config()
+    room_world = build_world_from_config(config)
+    room_title = config["room"]["title"]
+
     return {
-        "room": {"title": "우리 방", "world": _build_world(ROOM_SPECS)},
-        "town": {"title": "우리 동네", "world": _build_world(TOWN_SPECS)},
+        "room": {"title": room_title, "world": room_world},
+        "town": {"title": "우리 동네", "world": _build_town_world()},
     }
 
 
 def places_meta(places: dict) -> list[dict]:
     """클라이언트 탭용 목록: [{id, title, agents}]."""
-    return [{"id": pid, "title": p["title"], "agents": len(p["world"].agents)}
-            for pid, p in places.items()]
+    return [
+        {"id": pid, "title": p["title"], "agents": len(p["world"].agents)}
+        for pid, p in places.items()
+    ]

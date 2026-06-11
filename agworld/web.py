@@ -63,6 +63,8 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
                     self._json(world_state_dict(places[pid]["world"]))
             elif route == "/room":
                 self._json(room_dict(_place_param(self.path, places)))
+            elif route == "/room/config":
+                self._json(get_room_config())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -79,6 +81,15 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
                 shared["last_poll"][pid] = time.monotonic()
                 with lock:
                     result = submit_whisper(places[pid]["world"], str(payload.get("text", "")))
+                self._json(result)
+            elif route == "/room/config":
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    payload = json.loads(raw.decode("utf-8") or "{}")
+                except:
+                    payload = {}
+                result = update_room_config(payload)
                 self._json(result)
             else:
                 self._json({"error": "not found"}, 404)
@@ -195,6 +206,24 @@ PAGE = r"""<!DOCTYPE html>
     <button id="wSend">속삭임</button>
   </div>
   <div class="hint" id="hint">속삭임은 명령이 아니라 힌트 — 내 에이전트가 제 성격대로 소화합니다</div>
+</div>
+
+<!-- Room Edit Modal -->
+<div id="roomModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fffdf7; border-radius:16px; width:90%; max-width:520px; padding:20px; max-height:80vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:16px; color:#2a2620;">⚙️ Room 편집</h3>
+      <button id="closeModalBtn" style="background:none; border:none; font-size:22px; cursor:pointer; color:#8a8170;">×</button>
+    </div>
+    
+    <div id="roomAgentsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+    
+    <div style="margin-top:18px; display:flex; gap:8px;">
+      <button id="addAgentBtn" style="flex:1; padding:9px; background:#e0742f; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">+ 에이전트 추가</button>
+      <button id="saveRoomBtn" style="flex:1; padding:9px; background:#2a2620; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">저장하기</button>
+    </div>
+    <div id="roomSaveMsg" style="margin-top:8px; font-size:12px; color:#8a8170; text-align:center;"></div>
+  </div>
 </div>
 
 <script type="module">
@@ -479,6 +508,181 @@ async function sendWhisper(){
 }
 document.getElementById('wSend').onclick=sendWhisper;
 document.getElementById('wInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendWhisper(); });
+
+
+// === Room Edit Mode (개선된 UX) ===
+let currentRoomConfig = null;
+let hasUnsavedChanges = false;
+
+function markUnsaved() {
+  hasUnsavedChanges = true;
+  const btn = document.getElementById('saveRoomBtn');
+  if (btn) btn.disabled = false;
+}
+
+function openRoomModal() {
+  const modal = document.getElementById('roomModal');
+  modal.style.display = 'flex';
+  hasUnsavedChanges = false;
+  loadRoomConfigForEdit();
+}
+
+function closeRoomModal() {
+  if (hasUnsavedChanges) {
+    if (!confirm('저장하지 않은 변경사항이 있습니다. 정말 닫을까요?')) {
+      return;
+    }
+  }
+  const modal = document.getElementById('roomModal');
+  modal.style.display = 'none';
+  hasUnsavedChanges = false;
+}
+
+async function loadRoomConfigForEdit() {
+  try {
+    const res = await fetch('/room/config');
+    currentRoomConfig = await res.json();
+    renderRoomAgents();
+    
+    const btn = document.getElementById('saveRoomBtn');
+    if (btn) btn.disabled = true;
+  } catch(e) {
+    document.getElementById('roomSaveMsg').textContent = '설정을 불러오지 못했습니다.';
+  }
+}
+
+function renderRoomAgents() {
+  const container = document.getElementById('roomAgentsList');
+  container.innerHTML = '';
+  if (!currentRoomConfig || !currentRoomConfig.room) return;
+
+  const agents = currentRoomConfig.room.agents || [];
+  
+  agents.forEach((agent, idx) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background: white; 
+      border: 1px solid #d4c9a8; 
+      border-radius: 12px; 
+      padding: 14px 16px; 
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      transition: all 0.2s ease;
+    `;
+    card.onmouseenter = () => card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+    card.onmouseleave = () => card.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+    
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+            <strong style="font-size:15px;">${agent.name}</strong>
+            <span style="font-size:11px; color:#8a8170; background:#f5eedd; padding:1px 6px; border-radius:4px;">${agent.id}</span>
+            ${agent.is_mine ? '<span style="font-size:10px; background:#e0742f; color:white; padding:1px 6px; border-radius:4px;">내 에이전트</span>' : ''}
+          </div>
+          <div style="font-size:12.5px; color:#5c5240; line-height:1.4; white-space:pre-wrap;">${agent.persona_prompt}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+          <button data-idx="${idx}" class="editAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">수정</button>
+          <button data-idx="${idx}" class="delAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">삭제</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  // 이벤트 바인딩
+  container.querySelectorAll('.editAgentBtn').forEach(btn => {
+    btn.onclick = () => editAgent(parseInt(btn.dataset.idx));
+  });
+  container.querySelectorAll('.delAgentBtn').forEach(btn => {
+    btn.onclick = () => deleteAgent(parseInt(btn.dataset.idx));
+  });
+}
+
+function editAgent(idx) {
+  const agent = currentRoomConfig.room.agents[idx];
+  
+  const newName = prompt('이름:', agent.name);
+  if (newName === null) return;
+  
+  const newPersona = prompt('페르소나 (성격 설명):', agent.persona_prompt);
+  if (newPersona === null) return;
+  
+  const isMine = confirm('이 에이전트를 "내 에이전트"로 설정할까요?');
+  
+  agent.name = newName;
+  agent.persona_prompt = newPersona;
+  
+  if (isMine) {
+    currentRoomConfig.room.agents.forEach(a => a.is_mine = false);
+    agent.is_mine = true;
+  }
+  
+  markUnsaved();
+  renderRoomAgents();
+}
+
+function deleteAgent(idx) {
+  if (!confirm('정말 삭제할까요?')) return;
+  currentRoomConfig.room.agents.splice(idx, 1);
+  markUnsaved();
+  renderRoomAgents();
+}
+
+function addAgent() {
+  const id = prompt('에이전트 ID (영문 소문자):');
+  if (!id) return;
+  
+  const name = prompt('이름:');
+  if (!name) return;
+  
+  const persona = prompt('페르소나 (성격 설명):', '새로운 캐릭터입니다.');
+  if (persona === null) return;
+  
+  currentRoomConfig.room.agents.push({
+    id: id,
+    name: name,
+    persona_prompt: persona,
+    is_mine: false,
+    canned_lines: []
+  });
+  
+  markUnsaved();
+  renderRoomAgents();
+}
+
+async function saveRoomConfig() {
+  const msg = document.getElementById('roomSaveMsg');
+  msg.textContent = '저장 중...';
+  
+  try {
+    const res = await fetch('/room/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(currentRoomConfig)
+    });
+    const result = await res.json();
+    
+    if (result.ok) {
+      msg.textContent = '저장 완료!';
+      hasUnsavedChanges = false;
+      const btn = document.getElementById('saveRoomBtn');
+      if (btn) btn.disabled = true;
+      setTimeout(closeRoomModal, 1000);
+    } else {
+      msg.textContent = result.message || '저장 실패';
+    }
+  } catch(e) {
+    msg.textContent = '서버 오류';
+  }
+}
+
+// 이벤트 연결
+document.getElementById('roomEditBtn').onclick = openRoomModal;
+document.getElementById('closeModalBtn').onclick = closeRoomModal;
+document.getElementById('addAgentBtn').onclick = addAgent;
+document.getElementById('saveRoomBtn').onclick = saveRoomConfig;
 
 resize(); animate(); buildTabs(); setInterval(poll, 1000);
 </script>

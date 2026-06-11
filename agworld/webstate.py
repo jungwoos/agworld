@@ -60,3 +60,26 @@ def submit_whisper(world: World, text: str) -> dict:
     except RateLimited as e:
         return {"ok": False, "message": str(e)}
     return {"ok": True, "message": f"{mine.name}에게 속삭임 전달됨 (다음 차례에 반영)"}
+
+
+# === Room Config (Edit Mode) ===
+from .room_config import (
+    load_room_config,
+    save_room_config,
+    validate_room_config,
+)
+
+
+def get_room_config() -> dict:
+    """현재 room config 반환."""
+    return load_room_config()
+
+
+def update_room_config(new_config: dict) -> dict:
+    """room config 저장 + 유효성 검사."""
+    ok, msg = validate_room_config(new_config)
+    if not ok:
+        return {"ok": False, "message": msg or "유효하지 않은 설정"}
+
+    save_room_config(new_config)
+    return {"ok": True, "message": "Room 설정이 저장되었습니다. 다음 접속 시 반영됩니다."}
