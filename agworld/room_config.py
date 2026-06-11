@@ -1,22 +1,27 @@
-"""Room Config 관리 — JSON 기반 Room 정의 로드/저장/검증.
+"""Room Config 관리 — JSON 기반 다중 Room 정의 로드/저장/검증.
 
-Config 스키마:
+Config 스키마 (v2 — 사람마다 자기 방):
 {
-  "room": {
-    "id": "room",
-    "title": "우리 방",
-    "max_agents": 5,
-    "agents": [
-      {
-        "id": "ruri",
-        "name": "루리",
-        "persona_prompt": "...",
-        "is_mine": false,
-        "canned_lines": [["text", "emotion"], ...]
-      }
-    ]
-  }
+  "rooms": [
+    {
+      "id": "jungs",                 # place id이자 방 주인 에이전트 id와 동일하게 둔다
+      "title": "Jungs' Room",
+      "max_agents": 5,
+      "agents": [
+        {
+          "id": "jungs",
+          "name": "Jungs",
+          "persona_prompt": "...",
+          "is_mine": true,           # 방 주인 표시(레거시/콘솔용). 웹 정체성은 입장 키 기준.
+          "canned_lines": [["text", "emotion"], ...],
+          "secret": "..."            # 입장 키(로컬 폴백). salt 모드에선 무시됨.
+        }
+      ]
+    }
+  ]
 }
+
+이전 v1 스키마({"room": {...}})를 만나면 기본값으로 대체한다.
 """
 
 from __future__ import annotations
@@ -48,94 +53,85 @@ def _derived_secret(agent_id: str, salt: str) -> str:
     return base64.urlsafe_b64encode(digest)[:8].decode()
 
 
-def ensure_agent_secrets(config: dict[str, Any]) -> bool:
-    """secret이 없는 에이전트에 새 키를 채운다. 변경이 있었으면 True."""
-    changed = False
-    for a in config.get("room", {}).get("agents", []):
-        if not a.get("secret"):
-            a["secret"] = _gen_secret()
-            changed = True
-    return changed
-
-
-def get_agent_secrets(path: Path | str | None = None) -> dict[str, str]:
-    """agent_id -> secret 맵.
-
-    AGWORLD_KEY_SALT가 설정돼 있으면 키를 파생(파일에 안 씀).
-    없으면(로컬 개발) 파일에 생성해 저장한다.
-    """
-    config = load_room_config(path)
-    salt = os.environ.get(KEY_SALT_ENV)
-    if salt:
-        return {a["id"]: _derived_secret(a["id"], salt) for a in config["room"]["agents"]}
-    if ensure_agent_secrets(config):
-        save_room_config(config, path)
-    return {a["id"]: a["secret"] for a in config["room"]["agents"]}
-
-
-def strip_secrets(config: dict[str, Any]) -> dict[str, Any]:
-    """클라이언트 응답용 — secret을 제거한 사본을 반환한다."""
-    public = json.loads(json.dumps(config))
-    for a in public.get("room", {}).get("agents", []):
-        a.pop("secret", None)
-    return public
-
-
 def _default_room_config() -> dict[str, Any]:
-    """기존 places.py의 ROOM_SPECS를 기반으로 한 기본 설정."""
+    """기본 설정 — jungs와 jayy가 각자 자기 방을 가진다."""
     return {
-        "room": {
-            "id": "room",
-            "title": "우리 방",
-            "max_agents": 5,
-            "agents": [
-                {
-                    "id": "ruri",
-                    "name": "루리",
-                    "persona_prompt": "감정 표현이 솔직하고 서운함을 잘 탄다.",
-                    "is_mine": False,
-                    "canned_lines": [
-                        ["오늘 다들 좀 조용하네.", "neutral"],
-                        ["단, 아까 그 말 진심이었어? 나 좀 서운했어.", "anger"],
-                        ["...사과는 안 할 거야?", "sad"],
-                    ],
-                },
-                {
-                    "id": "dan",
-                    "name": "단",
-                    "persona_prompt": "무심한 척하지만 마음 약하고 사과를 잘 한다.",
-                    "is_mine": False,
-                    "canned_lines": [
-                        ["아 오늘 좀 피곤하다.", "sad"],
-                        ["그건 그냥 농담이었는데.", "surprise"],
-                        ["미안, 진심이 아니었어. 내가 말을 잘못했네.", "affection"],
-                    ],
-                },
-                {
-                    "id": "sona",
-                    "name": "소나",
-                    "persona_prompt": "둘 사이를 중재하는 다정한 관찰자.",
-                    "is_mine": True,
-                    "canned_lines": [
-                        ["무슨 일 있었어?", "thinking"],
-                        ["둘 다 진정하고... 얘기 좀 해봐.", "thinking"],
-                        ["거봐, 잘 풀렸네.", "joy"],
-                    ],
-                },
-            ],
-        }
+        "rooms": [
+            {
+                "id": "jungs",
+                "title": "Jungs' Room",
+                "max_agents": 5,
+                "agents": [
+                    {
+                        "id": "jungs",
+                        "name": "Jungs",
+                        "persona_prompt": "Easygoing but sharp host. Likes things tidy.",
+                        "is_mine": True,
+                        "canned_lines": [
+                            ["Finally home. Today was a lot.", "neutral"],
+                            ["Dan, did you eat my snacks again?", "surprise"],
+                            ["Eh, whatever. Wanna watch something?", "joy"],
+                        ],
+                    },
+                    {
+                        "id": "dan",
+                        "name": "Dan",
+                        "persona_prompt": "Acts indifferent but soft-hearted, quick to apologize.",
+                        "is_mine": False,
+                        "canned_lines": [
+                            ["...Maybe. They were just sitting there.", "neutral"],
+                            ["My bad — I'll buy you new ones.", "affection"],
+                            ["So what are we watching?", "thinking"],
+                        ],
+                    },
+                ],
+            },
+            {
+                "id": "jayy",
+                "title": "Jayy's Room",
+                "max_agents": 5,
+                "agents": [
+                    {
+                        "id": "jayy",
+                        "name": "Jayy",
+                        "persona_prompt": "Playful and blunt, secretly sentimental.",
+                        "is_mine": True,
+                        "canned_lines": [
+                            ["My room, my rules.", "joy"],
+                            ["Mina, quit moving my stuff around.", "anger"],
+                            ["...Fine, you can stay.", "affection"],
+                        ],
+                    },
+                    {
+                        "id": "mina",
+                        "name": "Mina",
+                        "persona_prompt": "Chatty neighbor who loves gossip.",
+                        "is_mine": False,
+                        "canned_lines": [
+                            ["Your room is basically my room.", "joy"],
+                            ["Did you hear about the neighbors?", "surprise"],
+                            ["Okay okay, I'll sit still.", "neutral"],
+                        ],
+                    },
+                ],
+            },
+        ]
     }
 
 
 def load_room_config(path: Path | str | None = None) -> dict[str, Any]:
-    """room_config.json을 로드. 파일이 없으면 기본 설정 반환."""
+    """room_config.json을 로드. 파일이 없거나 구버전 스키마면 기본 설정 반환."""
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
 
     if not config_path.exists():
         return _default_room_config()
 
     with open(config_path, encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+
+    if "rooms" not in config:  # v1({"room": ...}) → 기본값으로 대체
+        return _default_room_config()
+    return config
 
 
 def save_room_config(config: dict[str, Any], path: Path | str | None = None) -> None:
@@ -147,23 +143,71 @@ def save_room_config(config: dict[str, Any], path: Path | str | None = None) -> 
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
+def _iter_agents(config: dict[str, Any]):
+    for room in config.get("rooms", []):
+        yield from room.get("agents", [])
+
+
+def ensure_agent_secrets(config: dict[str, Any]) -> bool:
+    """secret이 없는 에이전트에 새 키를 채운다. 변경이 있었으면 True."""
+    changed = False
+    for a in _iter_agents(config):
+        if not a.get("secret"):
+            a["secret"] = _gen_secret()
+            changed = True
+    return changed
+
+
+def get_agent_secrets(path: Path | str | None = None) -> dict[str, str]:
+    """agent_id -> secret 맵 (모든 방의 에이전트 합집합).
+
+    AGWORLD_KEY_SALT가 설정돼 있으면 키를 파생(파일에 안 씀).
+    없으면(로컬 개발) 파일에 생성해 저장한다.
+    """
+    config = load_room_config(path)
+    salt = os.environ.get(KEY_SALT_ENV)
+    if salt:
+        return {a["id"]: _derived_secret(a["id"], salt) for a in _iter_agents(config)}
+    if ensure_agent_secrets(config):
+        save_room_config(config, path)
+    return {a["id"]: a["secret"] for a in _iter_agents(config)}
+
+
+def strip_secrets(config: dict[str, Any]) -> dict[str, Any]:
+    """클라이언트 응답용 — secret을 제거한 사본을 반환한다."""
+    public = json.loads(json.dumps(config))
+    for a in _iter_agents(public):
+        a.pop("secret", None)
+    return public
+
+
+def find_room(config: dict[str, Any], room_id: str) -> dict[str, Any] | None:
+    """config에서 room_id에 해당하는 방 엔트리를 찾는다."""
+    for room in config.get("rooms", []):
+        if room.get("id") == room_id:
+            return room
+    return None
+
+
 def validate_room_config(config: dict[str, Any]) -> tuple[bool, str | None]:
-    """Config 유효성 검사."""
-    if "room" not in config:
-        return False, "room 키가 없습니다."
+    """Config 유효성 검사 (모든 방)."""
+    rooms = config.get("rooms")
+    if not rooms:
+        return False, "Missing 'rooms'."
 
-    room = config["room"]
-    agents = room.get("agents", [])
+    for room in rooms:
+        agents = room.get("agents", [])
+        rid = room.get("id", "?")
 
-    if not agents:
-        return False, "최소 1명의 에이전트가 필요합니다."
+        if not agents:
+            return False, f"Room '{rid}' needs at least one agent."
 
-    mine_count = sum(1 for a in agents if a.get("is_mine"))
-    if mine_count != 1:
-        return False, f"is_mine=True인 에이전트는 정확히 1명이어야 합니다. (현재: {mine_count}명)"
+        mine_count = sum(1 for a in agents if a.get("is_mine"))
+        if mine_count != 1:
+            return False, f"Room '{rid}' must have exactly one owner (is_mine). Found {mine_count}."
 
-    max_agents = room.get("max_agents", 5)
-    if len(agents) > max_agents:
-        return False, f"에이전트 수가 최대치({max_agents}명)를 초과했습니다."
+        max_agents = room.get("max_agents", 5)
+        if len(agents) > max_agents:
+            return False, f"Room '{rid}' exceeds the agent limit ({max_agents})."
 
     return True, None

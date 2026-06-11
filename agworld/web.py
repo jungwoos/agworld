@@ -108,7 +108,8 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
             elif route == "/room":
                 self._json(room_dict(_place_param(self.path, places)))
             elif route == "/room/config":
-                self._json(get_room_config())
+                q = parse_qs(urlparse(self.path).query)
+                self._json(get_room_config((q.get("room", [None])[0])))
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -128,13 +129,15 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
                     result = submit_whisper(places[pid]["world"], str(payload.get("text", "")), viewer_id=viewer)
                 self._json(result)
             elif route == "/room/config":
+                q = parse_qs(urlparse(self.path).query)
+                room_id = (q.get("room", [None])[0]) or ""
                 length = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(length) if length else b"{}"
                 try:
                     payload = json.loads(raw.decode("utf-8") or "{}")
-                except:
+                except json.JSONDecodeError:
                     payload = {}
-                result = update_room_config(payload)
+                result = update_room_config(room_id, payload)
                 self._json(result)
             else:
                 self._json({"error": "not found"}, 404)
@@ -175,23 +178,23 @@ def serve(places: dict | None = None, host: str = "127.0.0.1", port: int = 8765,
     try:
         httpd = ThreadingHTTPServer((host, port), make_handler(places, lock, shared))
     except OSError as e:
-        print(f"❌ 포트 {port} 바인딩 실패: {e}", flush=True)
-        print(f"   → 다른 포트로: python3 -m agworld --web --port {port + 1}", flush=True)
+        print(f"❌ Failed to bind port {port}: {e}", flush=True)
+        print(f"   → Try another port: python3 -m agworld --web --port {port + 1}", flush=True)
         return
 
     start_ticker(places, lock, shared, interval, idle_timeout, stop)
     url = f"http://{host}:{port}/"
-    print(f"✅ AG-World 3D 웹뷰 실행 중 → 브라우저에서 열기: {url}", flush=True)
-    print(f"   장소: {', '.join(p['title'] for p in places.values())} · 틱 {interval:.0f}초 · Ctrl-C 종료", flush=True)
+    print(f"✅ AG-World 3D web view running → open in browser: {url}", flush=True)
+    print(f"   Places: {', '.join(p['title'] for p in places.values())} · tick {interval:.0f}s · Ctrl-C to quit", flush=True)
     # 에이전트별 입장 링크(키 없이 접속하면 관전 모드)
     names = {a.id: a.name for p in places.values() for a in p["world"].agents}
-    print("🔑 입장 링크 (각자 자기 링크로 접속):", flush=True)
+    print("🔑 Invite links (each person opens their own):", flush=True)
     for aid, secret in get_agent_secrets().items():
         print(f"   {names.get(aid, aid)} → {url}?me={aid}&key={secret}", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n종료 — 세계가 잠듭니다 💤", flush=True)
+        print("\nShutting down — the world goes to sleep 💤", flush=True)
     finally:
         stop.set()
         httpd.shutdown()
@@ -241,37 +244,37 @@ PAGE = r"""<!DOCTYPE html>
 <div class="frame">
   <div class="topbar">
     <div class="tabs" id="tabs"></div>
-    <button id="roomEditBtn" style="font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #c9b78a; background:#f8f1df; color:#5c5240; cursor:pointer;">⚙️ Room 편집</button>
-    <div class="status" id="status">연결 중...</div>
+    <button id="roomEditBtn" style="font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #c9b78a; background:#f8f1df; color:#5c5240; cursor:pointer;">⚙️ Edit Room</button>
+    <div class="status" id="status">Connecting...</div>
   </div>
   <div class="layout">
-    <div class="stage"><canvas id="scene"></canvas><div id="loading">3D 씬 로딩 중...</div></div>
+    <div class="stage"><canvas id="scene"></canvas><div id="loading">Loading 3D scene...</div></div>
     <div class="rail">
-      <h3>💬 대화 (말은 여기서 읽음)</h3>
+      <h3>💬 Conversation</h3>
       <div class="feed" id="feed"></div>
     </div>
   </div>
   <div class="whisper">
-    <span class="lab" id="wLab">🤫 <span id="whomLabel">내 에이전트</span>에게 속삭이기</span>
-    <input id="wInput" placeholder="예: 루리한테 너무 몰아세우지 말라고 해줘" autocomplete="off">
-    <button id="wSend">속삭임</button>
+    <span class="lab" id="wLab">🤫 Whisper to <span id="whomLabel">your agent</span></span>
+    <input id="wInput" placeholder="e.g. Tell Jayy to go easy on Dan" autocomplete="off">
+    <button id="wSend">Whisper</button>
   </div>
-  <div class="hint" id="hint">속삭임은 명령이 아니라 힌트 — 내 에이전트가 제 성격대로 소화합니다</div>
+  <div class="hint" id="hint">A whisper is a hint, not a command — your agent digests it in its own way</div>
 </div>
 
 <!-- Room Edit Modal -->
 <div id="roomModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fffdf7; border-radius:16px; width:90%; max-width:520px; padding:20px; max-height:80vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h3 style="margin:0; font-size:16px; color:#2a2620;">⚙️ Room 편집</h3>
+      <h3 style="margin:0; font-size:16px; color:#2a2620;" id="modalTitle">⚙️ Edit Room</h3>
       <button id="closeModalBtn" style="background:none; border:none; font-size:22px; cursor:pointer; color:#8a8170;">×</button>
     </div>
     
     <div id="roomAgentsList" style="display:flex; flex-direction:column; gap:10px;"></div>
     
     <div style="margin-top:18px; display:flex; gap:8px;">
-      <button id="addAgentBtn" style="flex:1; padding:9px; background:#e0742f; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">+ 에이전트 추가</button>
-      <button id="saveRoomBtn" style="flex:1; padding:9px; background:#2a2620; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">저장하기</button>
+      <button id="addAgentBtn" style="flex:1; padding:9px; background:#e0742f; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">+ Add Agent</button>
+      <button id="saveRoomBtn" style="flex:1; padding:9px; background:#2a2620; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Save</button>
     </div>
     <div id="roomSaveMsg" style="margin-top:8px; font-size:12px; color:#8a8170; text-align:center;"></div>
   </div>
@@ -332,9 +335,10 @@ function buildShell(size, sceneType){
     scene.background = new THREE.Color(0xbfe3f2);                       // 하늘
     const grass = new THREE.Mesh(new THREE.BoxGeometry(size*1.9,0.3,size*1.9), new THREE.MeshStandardMaterial({color:0x86b96a}));
     grass.position.y = -0.15; shellGroup.add(grass);                   // 잔디밭(넓게)
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(size*0.42,48), new THREE.MeshStandardMaterial({color:0xd8cdb4}));
+    const plazaR = Math.min(size*0.42, 6.2);                            // 광장은 절대 크기 유지(마을이 커져도 안 비대해짐)
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(plazaR,48), new THREE.MeshStandardMaterial({color:0xd8cdb4}));
     plaza.rotation.x = -Math.PI/2; plaza.position.y = 0.02; shellGroup.add(plaza);   // 포장된 광장
-    const edge = new THREE.Mesh(new THREE.RingGeometry(size*0.42,size*0.46,48), new THREE.MeshStandardMaterial({color:0xb6a886,side:THREE.DoubleSide}));
+    const edge = new THREE.Mesh(new THREE.RingGeometry(plazaR,plazaR+0.55,48), new THREE.MeshStandardMaterial({color:0xb6a886,side:THREE.DoubleSide}));
     edge.rotation.x = -Math.PI/2; edge.position.y = 0.025; shellGroup.add(edge);     // 광장 테두리
     const path = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.05,size*0.55), new THREE.MeshStandardMaterial({color:0xd2c7ad}));
     path.position.set(0,0.02,-size*0.32); shellGroup.add(path);        // 타운홀로 가는 길
@@ -385,7 +389,7 @@ const FURNITURE = {
     [-1.6,-0.55,0.55,1.6].forEach(x=>{ const c=fcyl(0.16,0.16,2.2,'#f3ece0'); c.position.set(x,1.2,1.15); g.add(c); }); // 기둥
     const door=fbox(0.9,1.5,0.12,'#6a4a30'); door.position.set(0,0.75,1.18); g.add(door);
     const clock=new THREE.Mesh(new THREE.CircleGeometry(0.34,24), new THREE.MeshStandardMaterial({color:0xf5f0e0})); clock.position.set(0,3.0,1.34); g.add(clock);
-    const sign=sprite('🏛 타운홀',34,'#5a4a35'); sign.scale.set(2.6,1.0,1); sign.position.set(0,4.3,0); g.add(sign);
+    const sign=sprite('🏛 Town Hall',30,'#5a4a35'); sign.scale.set(2.6,1.0,1); sign.position.set(0,4.3,0); g.add(sign);
     return g; },
   fountain(o){ const g=new THREE.Group();
     const basin=fcyl(1.2,1.3,0.4,'#b9b2a2'); basin.position.y=0.2; g.add(basin);
@@ -405,12 +409,26 @@ const FURNITURE = {
   bench(o){ const c=o.color||'#8a6f4f', g=new THREE.Group(); const seat=fbox(1.4,0.1,0.45,c); seat.position.y=0.45; g.add(seat);
     const back=fbox(1.4,0.4,0.1,c); back.position.set(0,0.7,-0.18); g.add(back);
     [-0.6,0.6].forEach(x=>{ const l=fbox(0.1,0.45,0.45,'#5a4a35'); l.position.set(x,0.22,0); g.add(l); }); return g; },
+  // 작은 집 — 탭하면 그 방으로 이동(o.place). 문이 +z를 향함.
+  house(o){ const g=new THREE.Group(); const wall=o.color||'#e9dcc4';
+    const base=fbox(3.0,2.0,2.6,wall); base.position.y=1.0; g.add(base);
+    const roof=new THREE.Mesh(new THREE.CylinderGeometry(0.001,2.35,1.2,4), fmat('#a5634c'));
+    roof.rotation.y=Math.PI/4; roof.scale.set(1.05,1,0.9); roof.position.y=2.6; g.add(roof);
+    const door=fbox(0.7,1.2,0.1,'#6a4a30'); door.position.set(0.5,0.6,1.32); g.add(door);
+    const knob=new THREE.Mesh(new THREE.SphereGeometry(0.05,8,8), fmat('#d8b25a')); knob.position.set(0.74,0.62,1.4); g.add(knob);
+    const win=fbox(0.8,0.7,0.08,'#add3e6'); win.position.set(-0.75,1.2,1.32); g.add(win);
+    const frame=fbox(0.92,0.82,0.06,'#7a6048'); frame.position.set(-0.75,1.2,1.3); g.add(frame);
+    if(o.label){ const sign=sprite('🏠 '+o.label,24,'#5a4a35'); sign.scale.set(3.0,1.2,1); sign.position.y=3.9; g.add(sign); }
+    return g; },
 };
 let furnitureGroup = new THREE.Group(); scene.add(furnitureGroup);
+let houses = [];   // 탭 내비게이션 대상: {group, place, label, x, z}
 function buildFurniture(items){
   scene.remove(furnitureGroup); furnitureGroup = new THREE.Group(); scene.add(furnitureGroup);
+  houses = [];
   (items||[]).forEach(it=>{ const b=FURNITURE[it.item]; if(!b) return; const g=b(it);
-    g.position.x+=(it.x||0); g.position.z+=(it.z||0); if(it.ry) g.rotation.y=it.ry*Math.PI/180; if(it.scale) g.scale.multiplyScalar(it.scale); furnitureGroup.add(g); });
+    g.position.x+=(it.x||0); g.position.z+=(it.z||0); if(it.ry) g.rotation.y=it.ry*Math.PI/180; if(it.scale) g.scale.multiplyScalar(it.scale); furnitureGroup.add(g);
+    if(it.item==='house' && it.place){ g.userData.place=it.place; houses.push({group:g, place:it.place, label:it.label||it.place, x:it.x||0, z:it.z||0}); } });
   setShadow(furnitureGroup, true, true);   // 가구/타운홀/나무는 그림자를 '드리움'
 }
 
@@ -476,19 +494,92 @@ function syncScene(){ if(!STATE) return; const n=STATE.agents.length;
 // 랜덤 배회: 방/광장 안 한 점을 목표로 천천히 걷고, 도착하면 새 목표. 중앙(분수 등)은 회피.
 const WANDER_SPEED = 0.7;
 function newTarget(){
-  const maxR = roomSize*0.38, keep = (currentScene==='outdoor' ? 1.9 : 0.6);
+  const maxR = Math.min(roomSize*0.38, 7.5), keep = (currentScene==='outdoor' ? 1.9 : 0.6);
   let x, z, r;
   do { x=(Math.random()*2-1)*maxR; z=(Math.random()*2-1)*maxR; r=Math.hypot(x,z); } while(r<keep || r>maxR);
   return { x, z };
 }
 
+// ===== 집 탭 내비게이션: 경로 하이라이트 + 경로 따라 걷기 =====
+const PATH_SPEED = 1.8;
+let pathGroup = null;
+function clearPath(){ if(pathGroup){ scene.remove(pathGroup); pathGroup=null; } }
+function buildPathDots(wps){
+  clearPath(); pathGroup = new THREE.Group();
+  for(let s=0; s<wps.length-1; s++){
+    const a=wps[s], b=wps[s+1], d=Math.hypot(b.x-a.x, b.z-a.z), n=Math.max(2, Math.round(d/0.7));
+    for(let k=0; k<=n; k++){ const t=k/n;
+      const dot=new THREE.Mesh(new THREE.CircleGeometry(0.14,12),
+        new THREE.MeshBasicMaterial({color:ACCENT, transparent:true, opacity:0.85}));
+      dot.rotation.x=-Math.PI/2; dot.position.set(a.x+(b.x-a.x)*t, 0.05, a.z+(b.z-a.z)*t);
+      dot.userData.ph=t*4;   // 펄스 위상(흐르는 느낌)
+      pathGroup.add(dot); }
+  }
+  scene.add(pathGroup);
+}
+// start→target 직선이 분수(중앙 r≈2.6)를 지나면 우회 경유점을 끼운다
+function routeAround(start, target){
+  const wps=[start];
+  const dx=target.x-start.x, dz=target.z-start.z, len=Math.hypot(dx,dz);
+  if(len>0.01){
+    // 선분-원점 최소거리
+    const t=Math.max(0, Math.min(1, -(start.x*dx+start.z*dz)/(len*len)));
+    const cx=start.x+dx*t, cz=start.z+dz*t;
+    if(Math.hypot(cx,cz)<2.6){
+      const ma=Math.atan2((start.z+target.z)/2, (start.x+target.x)/2);
+      wps.push({x:Math.cos(ma)*3.6, z:Math.sin(ma)*3.6});
+    }
+  }
+  wps.push(target);
+  return wps;
+}
+function navigateToHouse(h){
+  // 집 정면(광장 쪽)으로 2.6만큼 떨어진 접근점
+  const dl=Math.hypot(h.x,h.z)||1, door={x:h.x-h.x/dl*2.6, z:h.z-h.z/dl*2.6};
+  const mover=avatars[ME];
+  const start = mover ? {x:mover.group.position.x, z:mover.group.position.z} : {x:0, z:2.4};
+  const wps = routeAround(start, door);
+  buildPathDots(wps);
+  if(mover){
+    mover.path=wps.slice(1);   // 첫 점은 현재 위치
+    mover.onArrive=()=>{ clearPath(); switchPlace(h.place); };
+  } else {
+    setTimeout(()=>{ clearPath(); switchPlace(h.place); }, 1400);
+  }
+}
+// 탭 감지: 드래그(OrbitControls)와 구분 — 이동 6px 미만 + 400ms 미만일 때만
+const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+let downX=0, downY=0, downT=0;
+cv.addEventListener('pointerdown', e=>{ downX=e.clientX; downY=e.clientY; downT=performance.now(); });
+cv.addEventListener('pointerup', e=>{
+  if(Math.hypot(e.clientX-downX, e.clientY-downY)>6 || performance.now()-downT>400) return;
+  if(!houses.length) return;
+  const r=cv.getBoundingClientRect();
+  ndc.x=((e.clientX-r.left)/r.width)*2-1; ndc.y=-((e.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(ndc, camera);
+  const hits=ray.intersectObjects(houses.map(h=>h.group), true);
+  if(!hits.length) return;
+  let obj=hits[0].object; while(obj && !obj.userData.place) obj=obj.parent;
+  if(!obj) return;
+  const h=houses.find(x=>x.place===obj.userData.place);
+  if(h) navigateToHouse(h);
+});
+
 const clock=new THREE.Clock(); let elapsed=0;
 function animate(){ requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05); elapsed+=dt; const watching=STATE?STATE.watching:true;
+  if(pathGroup){ pathGroup.children.forEach(d=>{ d.material.opacity=0.45+0.4*Math.sin(elapsed*5-d.userData.ph); }); }
   for(const id in avatars){ const av=avatars[id], g=av.group;
     // idle ↔ walk 상태머신: 목표까지 걷고 → 도착하면 2~6초 멈춰 쉼 → 새 목표
     let walking=false;
-    if(watching && !av.speaking){   // 말할 차례면 멈춰서 말함, 자면 정지
+    if(av.path && av.path.length){   // 경로 추종(집 탭 내비게이션) — 배회/발화보다 우선
+      const t=av.path[0], dx=t.x-g.position.x, dz=t.z-g.position.z, d=Math.hypot(dx,dz);
+      if(d<0.16){ av.path.shift();
+        if(!av.path.length){ av.path=null; av.mode='idle'; av.until=elapsed+2; if(av.onArrive){ const f=av.onArrive; av.onArrive=null; f(); } } }
+      else { const step=Math.min(PATH_SPEED*dt,d); g.position.x+=dx/d*step; g.position.z+=dz/d*step; walking=true;
+        let diff=Math.atan2(dx,dz)-g.rotation.y; diff=Math.atan2(Math.sin(diff),Math.cos(diff)); g.rotation.y+=diff*Math.min(1,dt*8); }
+    }
+    else if(watching && !av.speaking){   // 말할 차례면 멈춰서 말함, 자면 정지
       if(av.mode===undefined){ av.mode='idle'; av.until=elapsed + 0.3 + Math.random()*2.5; }  // 시작 스태거
       if(av.mode==='idle'){
         if(elapsed>=av.until){ const t=newTarget(); av.tx=t.x; av.tz=t.z; av.mode='walk'; }
@@ -531,11 +622,11 @@ function applyViewerUI(my){
   if(cur === _lastViewer) return; _lastViewer = cur;
   const lab=document.getElementById('wLab'), wIn=document.getElementById('wInput'), wBtn=document.getElementById('wSend');
   if(my){
-    lab.innerHTML='🤫 <span id="whomLabel">'+esc(my.name)+'</span>에게 속삭이기';
+    lab.innerHTML='🤫 Whisper to <span id="whomLabel">'+esc(my.name)+'</span>';
     wIn.disabled=false; wBtn.disabled=false;
   } else {
-    lab.textContent='👀 관전 모드';
-    wIn.disabled=true; wIn.placeholder='내 에이전트 입장 링크(?me=…&key=…)로 접속하면 속삭일 수 있어요';
+    lab.textContent='👀 Spectator mode';
+    wIn.disabled=true; wIn.placeholder='Open your agent invite link (?me=…&key=…) to whisper';
     wBtn.disabled=true;
   }
 }
@@ -543,15 +634,15 @@ function applyViewerUI(my){
 async function poll(){
   if(!currentPlace) return;
   let s; try { s=await (await fetch('/state?place='+currentPlace+AUTH)).json(); }
-  catch(e){ document.getElementById('status').textContent='서버 연결 끊김'; return; }
+  catch(e){ document.getElementById('status').textContent='Disconnected'; return; }
   STATE=s;
   if(!ready){ ready=true; document.getElementById('loading').style.display='none'; }
-  document.getElementById('status').textContent=(s.watching?'관전 중':'자는 중 💤')+` · 틱 ${s.t} · $${s.cost}`;
+  document.getElementById('status').textContent=(s.watching?'Watching':'Sleeping 💤')+` · tick ${s.t} · $${s.cost}`;
   applyViewerUI(s.my_agent);
   syncScene();
   const feed=document.getElementById('feed'); let html='', lastT=null;
-  if(s.feed.length===0) html='<div class="tk">(아직 조용하다...)</div>';
-  s.feed.forEach(f=>{ if(f.t!==lastT){ html+=`<div class="tk">— 틱 ${f.t}${f.decisive?' ⚡':''} —</div>`; lastT=f.t; }
+  if(s.feed.length===0) html='<div class="tk">(quiet so far...)</div>';
+  s.feed.forEach(f=>{ if(f.t!==lastT){ html+=`<div class="tk">— tick ${f.t}${f.decisive?' ⚡':''} —</div>`; lastT=f.t; }
     html+=`<div class="line${f.is_mine?' me':''}${f.decisive?' moment':''}"><span class="sp">${esc(f.name)}:</span> ${esc(f.text)} ${f.emoji}</div>`; });
   feed.innerHTML=html; feed.scrollTop=feed.scrollHeight;
 }
@@ -560,13 +651,15 @@ async function switchPlace(pid){
   if(pid===currentPlace) return;
   currentPlace=pid; STATE=null;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.place===pid));
-  clearAvatars();
+  // Edit Room은 방에서만 (town은 하드코딩 장소)
+  document.getElementById('roomEditBtn').style.display = (pid==='town') ? 'none' : '';
+  clearPath(); clearAvatars();
   await loadRoom(pid);
   poll();
 }
 
 async function buildTabs(){
-  let list; try { list=await (await fetch('/places')).json(); } catch(e){ list=[{id:'room',title:'우리 방'}]; }
+  let list; try { list=await (await fetch('/places')).json(); } catch(e){ list=[{id:'jungs',title:"Jungs' Room"}]; }
   const tabs=document.getElementById('tabs');
   tabs.innerHTML='';
   list.forEach(p=>{ const b=document.createElement('div'); b.className='tab'; b.dataset.place=p.id;
@@ -577,7 +670,7 @@ async function buildTabs(){
 async function sendWhisper(){
   const inp=document.getElementById('wInput'), text=inp.value.trim(); if(!text||!currentPlace) return; inp.value='';
   try { const r=await (await fetch('/whisper?place='+currentPlace+AUTH,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})).json();
-    document.getElementById('hint').textContent=(r.ok?'🤫 ':'⏳ ')+r.message; } catch(e){ document.getElementById('hint').textContent='전송 실패'; }
+    document.getElementById('hint').textContent=(r.ok?'🤫 ':'⏳ ')+r.message; } catch(e){ document.getElementById('hint').textContent='Failed to send'; }
 }
 document.getElementById('wSend').onclick=sendWhisper;
 document.getElementById('wInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendWhisper(); });
@@ -594,6 +687,7 @@ function markUnsaved() {
 }
 
 function openRoomModal() {
+  if (currentPlace === 'town') return;
   const modal = document.getElementById('roomModal');
   modal.style.display = 'flex';
   hasUnsavedChanges = false;
@@ -602,7 +696,7 @@ function openRoomModal() {
 
 function closeRoomModal() {
   if (hasUnsavedChanges) {
-    if (!confirm('저장하지 않은 변경사항이 있습니다. 정말 닫을까요?')) {
+    if (!confirm('You have unsaved changes. Close anyway?')) {
       return;
     }
   }
@@ -613,23 +707,24 @@ function closeRoomModal() {
 
 async function loadRoomConfigForEdit() {
   try {
-    const res = await fetch('/room/config');
+    const res = await fetch('/room/config?room=' + encodeURIComponent(currentPlace));
     currentRoomConfig = await res.json();
+    document.getElementById('modalTitle').textContent = '⚙️ Edit ' + (currentRoomConfig.title || 'Room');
     renderRoomAgents();
-    
+
     const btn = document.getElementById('saveRoomBtn');
     if (btn) btn.disabled = true;
   } catch(e) {
-    document.getElementById('roomSaveMsg').textContent = '설정을 불러오지 못했습니다.';
+    document.getElementById('roomSaveMsg').textContent = 'Failed to load settings.';
   }
 }
 
 function renderRoomAgents() {
   const container = document.getElementById('roomAgentsList');
   container.innerHTML = '';
-  if (!currentRoomConfig || !currentRoomConfig.room) return;
+  if (!currentRoomConfig || !currentRoomConfig.agents) return;
 
-  const agents = currentRoomConfig.room.agents || [];
+  const agents = currentRoomConfig.agents || [];
   
   agents.forEach((agent, idx) => {
     const card = document.createElement('div');
@@ -651,13 +746,13 @@ function renderRoomAgents() {
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
             <strong style="font-size:15px;">${agent.name}</strong>
             <span style="font-size:11px; color:#8a8170; background:#f5eedd; padding:1px 6px; border-radius:4px;">${agent.id}</span>
-            ${agent.is_mine ? '<span style="font-size:10px; background:#e0742f; color:white; padding:1px 6px; border-radius:4px;">내 에이전트</span>' : ''}
+            ${agent.is_mine ? '<span style="font-size:10px; background:#e0742f; color:white; padding:1px 6px; border-radius:4px;">OWNER</span>' : ''}
           </div>
           <div style="font-size:12.5px; color:#5c5240; line-height:1.4; white-space:pre-wrap;">${agent.persona_prompt}</div>
         </div>
         <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
-          <button data-idx="${idx}" class="editAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">수정</button>
-          <button data-idx="${idx}" class="delAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">삭제</button>
+          <button data-idx="${idx}" class="editAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">Edit</button>
+          <button data-idx="${idx}" class="delAgentBtn" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid #c9b78a; background:#f8f1df; cursor:pointer;">Delete</button>
         </div>
       </div>
     `;
@@ -674,80 +769,80 @@ function renderRoomAgents() {
 }
 
 function editAgent(idx) {
-  const agent = currentRoomConfig.room.agents[idx];
-  
-  const newName = prompt('이름:', agent.name);
+  const agent = currentRoomConfig.agents[idx];
+
+  const newName = prompt('Name:', agent.name);
   if (newName === null) return;
-  
-  const newPersona = prompt('페르소나 (성격 설명):', agent.persona_prompt);
+
+  const newPersona = prompt('Persona (personality description):', agent.persona_prompt);
   if (newPersona === null) return;
-  
-  const isMine = confirm('이 에이전트를 "내 에이전트"로 설정할까요?');
-  
+
+  const isMine = confirm('Make this agent the room owner?');
+
   agent.name = newName;
   agent.persona_prompt = newPersona;
-  
+
   if (isMine) {
-    currentRoomConfig.room.agents.forEach(a => a.is_mine = false);
+    currentRoomConfig.agents.forEach(a => a.is_mine = false);
     agent.is_mine = true;
   }
-  
+
   markUnsaved();
   renderRoomAgents();
 }
 
 function deleteAgent(idx) {
-  if (!confirm('정말 삭제할까요?')) return;
-  currentRoomConfig.room.agents.splice(idx, 1);
+  if (!confirm('Delete this agent?')) return;
+  currentRoomConfig.agents.splice(idx, 1);
   markUnsaved();
   renderRoomAgents();
 }
 
 function addAgent() {
-  const id = prompt('에이전트 ID (영문 소문자):');
+  const id = prompt('Agent ID (lowercase letters):');
   if (!id) return;
-  
-  const name = prompt('이름:');
+
+  const name = prompt('Name:');
   if (!name) return;
-  
-  const persona = prompt('페르소나 (성격 설명):', '새로운 캐릭터입니다.');
+
+  const persona = prompt('Persona (personality description):', 'A new character.');
   if (persona === null) return;
-  
-  currentRoomConfig.room.agents.push({
+
+  currentRoomConfig.agents.push({
     id: id,
     name: name,
     persona_prompt: persona,
     is_mine: false,
     canned_lines: []
   });
-  
+
   markUnsaved();
   renderRoomAgents();
 }
 
 async function saveRoomConfig() {
   const msg = document.getElementById('roomSaveMsg');
-  msg.textContent = '저장 중...';
-  
+  msg.textContent = 'Saving...';
+
   try {
-    const res = await fetch('/room/config', {
+    const res = await fetch('/room/config?room=' + encodeURIComponent(currentPlace), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(currentRoomConfig)
     });
     const result = await res.json();
-    
+
     if (result.ok) {
-      msg.textContent = '저장 완료!';
+      msg.textContent = 'Saved!';
       hasUnsavedChanges = false;
       const btn = document.getElementById('saveRoomBtn');
       if (btn) btn.disabled = true;
       setTimeout(closeRoomModal, 1000);
     } else {
-      msg.textContent = result.message || '저장 실패';
+      msg.textContent = result.message || 'Save failed';
     }
   } catch(e) {
-    msg.textContent = '서버 오류';
+    msg.textContent = 'Server error';
   }
 }
 

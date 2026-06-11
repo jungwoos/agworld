@@ -39,7 +39,7 @@ class WhisperQueue:
         self._evict_old(stamps, current_tick)
         if len(stamps) >= self._rate_limit:
             raise RateLimited(
-                f"분당 {self._rate_limit}회 제한. 잠시 후 다시 속삭여줘."
+                f"Limit is {self._rate_limit} whispers per window — try again in a moment."
             )
         clean = sanitize_whisper(raw_text)
         if not clean:

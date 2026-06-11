@@ -54,22 +54,23 @@ def submit_whisper(world: World, text: str, viewer_id: str | None = None) -> dic
     """브라우저가 보낸 귓속말을 보는 사람의 에이전트에게 큐잉. {ok, message} 반환."""
     text = (text or "").strip()
     if not text:
-        return {"ok": False, "message": "빈 귓속말"}
+        return {"ok": False, "message": "Empty whisper"}
     if not viewer_id:
-        return {"ok": False, "message": "관전 모드 — 내 에이전트 입장 링크로 접속해야 속삭일 수 있어요"}
+        return {"ok": False, "message": "Spectator mode — open your agent invite link to whisper"}
     mine = world._by_id.get(viewer_id)
     if mine is None:
-        return {"ok": False, "message": "이 장소에는 내 에이전트가 없습니다"}
+        return {"ok": False, "message": "Your agent isn't in this place"}
     try:
         world.whisper(mine.id, text)
     except RateLimited as e:
         return {"ok": False, "message": str(e)}
-    return {"ok": True, "message": f"{mine.name}에게 속삭임 전달됨 (다음 차례에 반영)"}
+    return {"ok": True, "message": f"Whispered to {mine.name} (lands on their next turn)"}
 
 
 # === Room Config (Edit Mode) ===
 from .room_config import (
     ensure_agent_secrets,
+    find_room,
     load_room_config,
     save_room_config,
     strip_secrets,
@@ -77,27 +78,40 @@ from .room_config import (
 )
 
 
-def get_room_config() -> dict:
-    """현재 room config 반환. secret(입장 키)은 클라이언트에 노출하지 않는다."""
-    return strip_secrets(load_room_config())
+def get_room_config(room_id: str | None = None) -> dict:
+    """room config 반환. secret(입장 키)은 클라이언트에 노출하지 않는다.
+
+    room_id가 주어지면 그 방 엔트리만, 없으면 전체 config.
+    """
+    config = strip_secrets(load_room_config())
+    if room_id is None:
+        return config
+    room = find_room(config, room_id)
+    return room if room else {"error": f"Unknown room '{room_id}'"}
 
 
-def update_room_config(new_config: dict) -> dict:
-    """room config 저장 + 유효성 검사. secret은 서버가 관리(기존 보존, 신규 생성)."""
-    ok, msg = validate_room_config(new_config)
-    if not ok:
-        return {"ok": False, "message": msg or "유효하지 않은 설정"}
+def update_room_config(room_id: str, room_data: dict) -> dict:
+    """한 방의 설정을 저장 + 유효성 검사. secret은 서버가 관리(기존 보존, 신규 생성)."""
+    config = load_room_config()
+    target = find_room(config, room_id)
+    if target is None:
+        return {"ok": False, "message": f"Unknown room '{room_id}'"}
 
     # 클라이언트가 보낸 secret은 무시하고 디스크의 기존 키를 보존, 새 에이전트는 새 키 발급
-    existing = {
-        a["id"]: a.get("secret")
-        for a in load_room_config().get("room", {}).get("agents", [])
-    }
-    for a in new_config.get("room", {}).get("agents", []):
+    existing = {a["id"]: a.get("secret") for a in target.get("agents", [])}
+    room_data = dict(room_data)
+    room_data["id"] = room_id  # id는 URL 기준 고정
+    for a in room_data.get("agents", []):
         a.pop("secret", None)
         if existing.get(a["id"]):
             a["secret"] = existing[a["id"]]
-    ensure_agent_secrets(new_config)
 
-    save_room_config(new_config)
-    return {"ok": True, "message": "Room 설정이 저장되었습니다. 다음 접속 시 반영됩니다."}
+    config["rooms"] = [room_data if r.get("id") == room_id else r for r in config["rooms"]]
+
+    ok, msg = validate_room_config(config)
+    if not ok:
+        return {"ok": False, "message": msg or "Invalid settings"}
+
+    ensure_agent_secrets(config)
+    save_room_config(config)
+    return {"ok": True, "message": "Room settings saved. Applied on next reload."}

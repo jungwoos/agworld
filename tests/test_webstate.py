@@ -101,13 +101,13 @@ class TestSubmitWhisper(unittest.TestCase):
         w = make_world()
         r = submit_whisper(w, "hi")  # viewer_id 없음 → 관전 모드
         self.assertFalse(r["ok"])
-        self.assertIn("관전", r["message"])
+        self.assertIn("Spectator", r["message"])
 
     def test_viewer_agent_not_in_world(self):
         w = World([Agent("a", "A", "p")], FakeProvider())
         r = submit_whisper(w, "hi", viewer_id="ghost")
         self.assertFalse(r["ok"])
-        self.assertIn("내 에이전트", r["message"])
+        self.assertIn("isn't in this place", r["message"])
 
     def test_rate_limit_message(self):
         from agworld.whisper import WhisperQueue

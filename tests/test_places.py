@@ -8,8 +8,9 @@ class TestPlaces(unittest.TestCase):
     def setUp(self):
         self.places = build_places()
 
-    def test_has_room_and_town(self):
-        self.assertIn("room", self.places)
+    def test_has_rooms_and_town(self):
+        self.assertIn("jungs", self.places)
+        self.assertIn("jayy", self.places)
         self.assertIn("town", self.places)
 
     def test_town_has_ten_agents(self):
@@ -21,12 +22,17 @@ class TestPlaces(unittest.TestCase):
             self.assertEqual(len(mine), 1, f"{pid} should have one mine agent")
             self.assertIsNotNone(find_my_agent(p["world"]))
 
+    def test_room_owners(self):
+        # 각 방의 주인은 방 id와 같은 에이전트
+        self.assertEqual(find_my_agent(self.places["jungs"]["world"]).id, "jungs")
+        self.assertEqual(find_my_agent(self.places["jayy"]["world"]).id, "jayy")
+
     def test_places_are_independent_worlds(self):
-        # 같은 이름(소나)이라도 장소별 별개 인스턴스
-        self.assertIsNot(self.places["room"]["world"], self.places["town"]["world"])
-        room_sona = find_my_agent(self.places["room"]["world"])
-        town_sona = find_my_agent(self.places["town"]["world"])
-        self.assertIsNot(room_sona, town_sona)
+        # 같은 id(jungs)라도 장소별 별개 인스턴스
+        self.assertIsNot(self.places["jungs"]["world"], self.places["town"]["world"])
+        room_jungs = find_my_agent(self.places["jungs"]["world"])
+        town_jungs = find_my_agent(self.places["town"]["world"])
+        self.assertIsNot(room_jungs, town_jungs)
 
     def test_town_world_steps(self):
         w = self.places["town"]["world"]
@@ -40,10 +46,10 @@ class TestPlaces(unittest.TestCase):
     def test_places_meta(self):
         meta = places_meta(self.places)
         ids = [m["id"] for m in meta]
-        self.assertEqual(ids, ["room", "town"])
+        self.assertEqual(ids, ["jungs", "jayy", "town"])
         town = next(m for m in meta if m["id"] == "town")
         self.assertEqual(town["agents"], 10)
-        self.assertEqual(town["title"], "우리 동네")
+        self.assertEqual(town["title"], "Town")
 
 
 if __name__ == "__main__":
