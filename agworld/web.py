@@ -27,8 +27,10 @@ from .places import build_places, places_meta
 from .room import room_dict
 from .webstate import submit_whisper, world_state_dict
 
-# Vite 빌드 결과물 경로
-STATIC_DIR = Path(__file__).parent.parent / "static"
+# Vite 빌드 결과물 경로 (Render 환경 대응)
+import os as _os
+STATIC_DIR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "static"))
+
 
 
 def _place_param(path: str, places: dict) -> str:
@@ -52,9 +54,10 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
             self.wfile.write(body)
 
 
-        def _serve_static(self, file_path):
-            import mimetypes
+                def _serve_static(self, file_path):
+            import mimetypes, os
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                print(f"[static] File not found: {file_path}")
                 self.send_response(404)
                 self.end_headers()
                 return
