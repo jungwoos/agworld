@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +25,9 @@ from urllib.parse import parse_qs, urlparse
 from .places import build_places, places_meta
 from .room import room_dict
 from .webstate import submit_whisper, world_state_dict
+
+# 로컬 벤더 파일(three.module.js 등) 경로 — CDN 의존 제거
+VENDOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "vendor")
 
 
 def _place_param(path: str, places: dict) -> str:
@@ -45,9 +50,32 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
             self.end_headers()
             self.wfile.write(body)
 
+        def _serve_static(self, base_dir, rel_path):
+            # 디렉터리 탈출 방지
+            full = os.path.normpath(os.path.join(base_dir, rel_path))
+            if not full.startswith(os.path.normpath(base_dir) + os.sep):
+                self._json({"error": "forbidden"}, 403)
+                return
+            if not os.path.isfile(full):
+                self._json({"error": "not found"}, 404)
+                return
+            ctype, _ = mimetypes.guess_type(full)
+            if full.endswith(".js"):
+                ctype = "text/javascript"
+            with open(full, "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype or "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=31536000")
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
             route = urlparse(self.path).path
-            if route == "/" or route.startswith("/index"):
+            if route.startswith("/vendor/"):
+                self._serve_static(VENDOR_DIR, route[len("/vendor/"):])
+            elif route == "/" or route.startswith("/index"):
                 body = PAGE.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -182,8 +210,8 @@ PAGE = r"""<!DOCTYPE html>
 </style>
 <script type="importmap">
 { "imports": {
-  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  "three": "/vendor/three.module.js",
+  "three/addons/": "/vendor/addons/"
 }}
 </script>
 </head>
@@ -194,7 +222,7 @@ PAGE = r"""<!DOCTYPE html>
     <div class="status" id="status">연결 중...</div>
   </div>
   <div class="layout">
-    <div class="stage"><canvas id="scene"></canvas><div id="loading">3D 씬 로딩 중... (Three.js CDN — 인터넷 필요)</div></div>
+    <div class="stage"><canvas id="scene"></canvas><div id="loading">3D 씬 로딩 중...</div></div>
     <div class="rail">
       <h3>💬 대화 (말은 여기서 읽음)</h3>
       <div class="feed" id="feed"></div>
