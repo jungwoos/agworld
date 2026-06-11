@@ -15,14 +15,20 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .places import build_places, places_meta
 from .room import room_dict
 from .webstate import submit_whisper, world_state_dict
+
+# Vite 빌드 결과물 경로
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 def _place_param(path: str, places: dict) -> str:
@@ -45,16 +51,47 @@ def make_handler(places: dict, lock: threading.Lock, shared: dict):
             self.end_headers()
             self.wfile.write(body)
 
+
+        def _serve_static(self, file_path):
+            import os, mimetypes
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                self.send_response(404)
+                self.end_headers()
+                return
+            content_type, _ = mimetypes.guess_type(file_path)
+            if content_type is None:
+                content_type = "application/octet-stream"
+            with open(file_path, "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
             route = urlparse(self.path).path
+
+            # Vite 정적 파일 서빙
             if route == "/" or route.startswith("/index"):
+                index_file = str(STATIC_DIR / "index.html")
+                if os.path.exists(index_file):
+                    self._serve_static(index_file)
+                    return
                 body = PAGE.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
-            elif route == "/places":
+                return
+
+            if route.startswith("/assets/"):
+                asset_file = str(STATIC_DIR / route.lstrip("/"))
+                self._serve_static(asset_file)
+                return
+
+            if route == "/places":
                 self._json(places_meta(places))
             elif route == "/state":
                 pid = _place_param(self.path, places)
