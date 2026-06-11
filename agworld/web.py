@@ -20,16 +20,20 @@ import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .places import build_places, places_meta
 from .room import room_dict
 from .webstate import submit_whisper, world_state_dict
 
-# Vite 빌드 결과물 경로 (Render 환경 대응)
+# Vite 빌드 결과물 경로 (Render 안전 버전)
 import os as _os
-STATIC_DIR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "static"))
+STATIC_DIR = None
+try:
+    STATIC_DIR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "static"))
+except Exception as e:
+    print(f"[startup] STATIC_DIR 계산 실패: {e}")
+
 
 
 
