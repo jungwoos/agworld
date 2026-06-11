@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .places import build_places, places_meta
 from .room import room_dict
-from .webstate import submit_whisper, world_state_dict
+from .webstate import get_room_config, submit_whisper, update_room_config, world_state_dict
 
 # 로컬 벤더 파일(three.module.js 등) 경로 — CDN 의존 제거
 VENDOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "vendor")
@@ -219,6 +219,7 @@ PAGE = r"""<!DOCTYPE html>
 <div class="frame">
   <div class="topbar">
     <div class="tabs" id="tabs"></div>
+    <button id="roomEditBtn" style="font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #c9b78a; background:#f8f1df; color:#5c5240; cursor:pointer;">⚙️ Room 편집</button>
     <div class="status" id="status">연결 중...</div>
   </div>
   <div class="layout">
@@ -706,11 +707,11 @@ async function saveRoomConfig() {
   }
 }
 
-// 이벤트 연결
-document.getElementById('roomEditBtn').onclick = openRoomModal;
-document.getElementById('closeModalBtn').onclick = closeRoomModal;
-document.getElementById('addAgentBtn').onclick = addAgent;
-document.getElementById('saveRoomBtn').onclick = saveRoomConfig;
+// 이벤트 연결 (요소가 없어도 전체 초기화가 죽지 않게 null-safe)
+for (const [id, fn] of [['roomEditBtn', openRoomModal], ['closeModalBtn', closeRoomModal], ['addAgentBtn', addAgent], ['saveRoomBtn', saveRoomConfig]]) {
+  const el = document.getElementById(id);
+  if (el) el.onclick = fn;
+}
 
 resize(); animate(); buildTabs(); setInterval(poll, 1000);
 </script>
