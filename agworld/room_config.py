@@ -35,6 +35,8 @@ import secrets as _secrets
 from pathlib import Path
 from typing import Any
 
+from .room import DEFAULT_ROOM_FALLBACK, DEFAULT_ROOM_ITEMS
+
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "room_config.json"
 
 # 입장 키 파생용 salt. 설정돼 있으면 키를 여기서 파생(저장소/디스크에 비밀 없음).
@@ -61,6 +63,7 @@ def _default_room_config() -> dict[str, Any]:
                 "id": "jungs",
                 "title": "Jungs' Room",
                 "max_agents": 5,
+                "items": [dict(it) for it in DEFAULT_ROOM_ITEMS["jungs"]],
                 "agents": [
                     {
                         "id": "jungs",
@@ -90,6 +93,7 @@ def _default_room_config() -> dict[str, Any]:
                 "id": "jayy",
                 "title": "Jayy's Room",
                 "max_agents": 5,
+                "items": [dict(it) for it in DEFAULT_ROOM_ITEMS["jayy"]],
                 "agents": [
                     {
                         "id": "jayy",
@@ -187,6 +191,22 @@ def find_room(config: dict[str, Any], room_id: str) -> dict[str, Any] | None:
         if room.get("id") == room_id:
             return room
     return None
+
+
+def room_items(config: dict[str, Any], room_id: str) -> list[dict] | None:
+    """방의 가구 목록. 방이 없으면 None, items가 비었으면 기본 시드."""
+    room = find_room(config, room_id)
+    if room is None:
+        return None
+    return room.get("items") or DEFAULT_ROOM_ITEMS.get(room_id, DEFAULT_ROOM_FALLBACK)
+
+
+def room_owner(config: dict[str, Any], room_id: str) -> str | None:
+    """방 주인(is_mine) 에이전트 id."""
+    room = find_room(config, room_id)
+    if room is None:
+        return None
+    return next((a["id"] for a in room.get("agents", []) if a.get("is_mine")), None)
 
 
 def validate_room_config(config: dict[str, Any]) -> tuple[bool, str | None]:

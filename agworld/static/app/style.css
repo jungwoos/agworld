@@ -1,0 +1,44 @@
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,"Apple SD Gothic Neo",sans-serif; background:#ece6da; color:#2a2620; padding:20px; }
+.frame { max-width:1060px; margin:0 auto; }
+
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px; }
+.tabs { display:flex; gap:6px; }
+.tab { font-size:13px; padding:6px 14px; border-radius:10px; border:1px solid #cdc0a2; background:#f5eedd; color:#6a6150; cursor:pointer; }
+.tab.active { background:#e0742f; color:#fff; border-color:#e0742f; font-weight:700; }
+.status { font-size:12px; color:#8a8170; }
+.ghost-btn { font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #c9b78a; background:#f8f1df; color:#5c5240; cursor:pointer; }
+
+.layout { display:grid; grid-template-columns:1fr 300px; gap:16px; }
+@media(max-width:780px){ .layout{ grid-template-columns:1fr; } }
+.stage { position:relative; background:linear-gradient(180deg,#f5eedd,#e2d3b6); border:1px solid #cdc0a2; border-radius:16px; height:480px; overflow:hidden; }
+#scene { width:100%; height:100%; display:block; }
+#loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#9a8f76; font-size:13px; text-align:center; padding:20px; }
+
+.rail { background:#fffdf7; border:1px solid #e2d9c2; border-radius:16px; padding:14px; display:flex; flex-direction:column; height:480px; }
+.rail h3 { font-size:12px; color:#8a8170; margin-bottom:10px; font-weight:700; }
+.feed { flex:1; overflow:auto; display:flex; flex-direction:column; gap:7px; }
+.line { font-size:13px; line-height:1.45; }
+.line .sp { font-weight:700; }
+.line.me .sp { color:#c4621f; }
+.tk { font-size:10px; color:#bcb29a; margin-top:4px; }
+.moment { background:#fbeede; border-left:3px solid #e0742f; padding:5px 8px; border-radius:6px; }
+
+.whisper { margin-top:16px; display:flex; align-items:center; gap:10px; background:#2a2620; border-radius:13px; padding:10px 14px; }
+.whisper .lab { font-size:12px; color:#e0b07f; white-space:nowrap; }
+.whisper input { flex:1; background:transparent; border:none; outline:none; color:#f4f1ea; font-size:13px; }
+.whisper input::placeholder { color:#7a7060; }
+.whisper button { font-size:12px; color:#2a2620; background:#e0742f; border:none; border-radius:8px; padding:7px 13px; font-weight:600; cursor:pointer; }
+.hint { font-size:10px; color:#9a8f76; margin-top:6px; text-align:center; }
+
+/* ── 가구 편집 툴바 ── */
+#editbar { position:absolute; top:10px; left:10px; right:10px; display:flex; align-items:center; gap:6px;
+  background:rgba(42,38,32,0.92); border-radius:11px; padding:8px 10px; z-index:10; }
+#editbar select { font-size:12px; padding:5px 7px; border-radius:7px; border:none; background:#f5eedd; color:#2a2620; }
+#editbar button { font-size:12px; padding:5px 10px; border-radius:7px; border:none; background:#4a443a; color:#f4f1ea; cursor:pointer; }
+#editbar button:disabled { opacity:0.35; cursor:default; }
+#editbar button.primary { background:#e0742f; font-weight:700; }
+#editbar .vsep { width:1px; height:18px; background:#5a5448; }
+#editbar .grow { flex:1; }
+#editHint { position:absolute; bottom:10px; left:0; right:0; text-align:center; font-size:11px;
+  color:#fffdf7; text-shadow:0 1px 3px rgba(0,0,0,0.5); z-index:10; pointer-events:none; }

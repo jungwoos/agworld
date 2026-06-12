@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AG-World 3D</title>
+<link rel="icon" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/app/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "/static/vendor/three.module.js",
+  "three/addons/": "/static/vendor/addons/"
+}}
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="tabs" id="tabs"></div>
+    <button id="editBtn" class="ghost-btn" style="display:none">🛋 Edit Room</button>
+    <div class="status" id="status">Connecting...</div>
+  </div>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="scene"></canvas>
+      <div id="loading">Loading 3D scene...</div>
+      <!-- 가구 편집 툴바 (편집 모드에서만 표시) -->
+      <div id="editbar" style="display:none">
+        <select id="addSelect"></select>
+        <button id="addBtn">+ Add</button>
+        <span class="vsep"></span>
+        <button id="rotBtn" disabled>⟲ 45°</button>
+        <button id="scaleDn" disabled>−</button>
+        <button id="scaleUp" disabled>＋</button>
+        <button id="delBtn" disabled>🗑</button>
+        <span class="grow"></span>
+        <button id="saveEditBtn" class="primary">Save</button>
+        <button id="cancelEditBtn">Cancel</button>
+      </div>
+      <div id="editHint" style="display:none">Tap furniture to select · drag to move</div>
+    </div>
+    <div class="rail">
+      <h3>💬 Conversation</h3>
+      <div class="feed" id="feed"></div>
+    </div>
+  </div>
+
+  <div class="whisper">
+    <span class="lab" id="wLab">🤫 Whisper to <span id="whomLabel">your agent</span></span>
+    <input id="wInput" placeholder="e.g. Tell Jayy to go easy on Dan" autocomplete="off">
+    <button id="wSend">Whisper</button>
+  </div>
+  <div class="hint" id="hint">A whisper is a hint, not a command — your agent digests it in its own way</div>
+</div>
+<script type="module" src="/static/app/main.js"></script>
+</body>
+</html>

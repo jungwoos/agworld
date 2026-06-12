@@ -67,51 +67,44 @@ def submit_whisper(world: World, text: str, viewer_id: str | None = None) -> dic
     return {"ok": True, "message": f"Whispered to {mine.name} (lands on their next turn)"}
 
 
-# === Room Config (Edit Mode) ===
+# === Room 데이터 + 가구 편집 ===
+from .room import room_dict_from_items, sanitize_items, town_dict
 from .room_config import (
-    ensure_agent_secrets,
     find_room,
     load_room_config,
+    room_items,
+    room_owner,
     save_room_config,
-    strip_secrets,
-    validate_room_config,
 )
 
 
-def get_room_config(room_id: str | None = None) -> dict:
-    """room config 반환. secret(입장 키)은 클라이언트에 노출하지 않는다.
+def get_room_data(place: str) -> dict:
+    """GET /room?place= 응답 — 방은 config 기반, town은 하드코딩."""
+    if place == "town":
+        return town_dict()
+    config = load_room_config()
+    items = room_items(config, place)
+    if items is None:  # 모르는 장소 → 첫 방으로 폴백
+        first = config["rooms"][0]
+        return room_dict_from_items(first["id"], room_items(config, first["id"]))
+    return room_dict_from_items(place, items)
 
-    room_id가 주어지면 그 방 엔트리만, 없으면 전체 config.
-    """
-    config = strip_secrets(load_room_config())
-    if room_id is None:
-        return config
-    room = find_room(config, room_id)
-    return room if room else {"error": f"Unknown room '{room_id}'"}
 
-
-def update_room_config(room_id: str, room_data: dict) -> dict:
-    """한 방의 설정을 저장 + 유효성 검사. secret은 서버가 관리(기존 보존, 신규 생성)."""
+def update_room_items(room_id: str, items: object, viewer_id: str | None = None) -> dict:
+    """방 가구 저장. 방 주인만 편집 가능. {ok, message} 반환."""
+    if not viewer_id:
+        return {"ok": False, "message": "Spectator mode — open your invite link to edit"}
     config = load_room_config()
     target = find_room(config, room_id)
     if target is None:
         return {"ok": False, "message": f"Unknown room '{room_id}'"}
+    if viewer_id != room_owner(config, room_id):
+        return {"ok": False, "message": "Only the room owner can edit furniture"}
 
-    # 클라이언트가 보낸 secret은 무시하고 디스크의 기존 키를 보존, 새 에이전트는 새 키 발급
-    existing = {a["id"]: a.get("secret") for a in target.get("agents", [])}
-    room_data = dict(room_data)
-    room_data["id"] = room_id  # id는 URL 기준 고정
-    for a in room_data.get("agents", []):
-        a.pop("secret", None)
-        if existing.get(a["id"]):
-            a["secret"] = existing[a["id"]]
-
-    config["rooms"] = [room_data if r.get("id") == room_id else r for r in config["rooms"]]
-
-    ok, msg = validate_room_config(config)
+    ok, msg, cleaned = sanitize_items(items)
     if not ok:
-        return {"ok": False, "message": msg or "Invalid settings"}
+        return {"ok": False, "message": msg}
 
-    ensure_agent_secrets(config)
+    target["items"] = cleaned
     save_room_config(config)
-    return {"ok": True, "message": "Room settings saved. Applied on next reload."}
+    return {"ok": True, "message": "Room saved!"}

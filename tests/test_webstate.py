@@ -128,5 +128,70 @@ class TestSubmitWhisper(unittest.TestCase):
         self.assertTrue(submit_whisper(w, "나는 따로", viewer_id="ruri")["ok"])  # 루리 주인은 영향 없음
 
 
+class TestRoomData(unittest.TestCase):
+    """get_room_data / update_room_items — 임시 config 경로에서 테스트."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from agworld import room_config
+        self._tmp = tempfile.TemporaryDirectory()
+        self._patch = mock.patch.object(
+            room_config, "DEFAULT_CONFIG_PATH", Path(self._tmp.name) / "config.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        self._tmp.cleanup()
+
+    def test_get_room_data_rooms_and_town(self):
+        from agworld.webstate import get_room_data
+        d = get_room_data("jungs")
+        self.assertEqual(d["scene"], "indoor")
+        self.assertTrue(d["items"])
+        t = get_room_data("town")
+        self.assertEqual(t["scene"], "outdoor")
+        self.assertEqual(t["room_size"], 28)
+
+    def test_get_room_data_unknown_falls_back(self):
+        from agworld.webstate import get_room_data
+        d = get_room_data("atlantis")
+        self.assertEqual(d["place"], "jungs")
+
+    def test_update_requires_viewer(self):
+        from agworld.webstate import update_room_items
+        r = update_room_items("jungs", [], viewer_id=None)
+        self.assertFalse(r["ok"])
+        self.assertIn("Spectator", r["message"])
+
+    def test_update_requires_owner(self):
+        from agworld.webstate import update_room_items
+        r = update_room_items("jungs", [], viewer_id="jayy")   # 남의 방
+        self.assertFalse(r["ok"])
+        self.assertIn("owner", r["message"])
+
+    def test_owner_can_save_and_data_roundtrips(self):
+        from agworld.webstate import get_room_data, update_room_items
+        items = [{"item": "sofa", "x": 1.0, "z": -1.0, "ry": 90}]
+        r = update_room_items("jungs", items, viewer_id="jungs")
+        self.assertTrue(r["ok"], r["message"])
+        d = get_room_data("jungs")
+        self.assertEqual(len(d["items"]), 1)
+        self.assertEqual(d["items"][0]["item"], "sofa")
+        # 다른 방은 영향 없음
+        self.assertGreater(len(get_room_data("jayy")["items"]), 1)
+
+    def test_invalid_items_rejected(self):
+        from agworld.webstate import update_room_items
+        r = update_room_items("jungs", [{"item": "house", "x": 0, "z": 0}], viewer_id="jungs")
+        self.assertFalse(r["ok"])
+
+    def test_unknown_room_rejected(self):
+        from agworld.webstate import update_room_items
+        r = update_room_items("nope", [], viewer_id="jungs")
+        self.assertFalse(r["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()
