@@ -28,6 +28,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from . import store
 from .places import build_places, places_meta
 from .room_config import get_agent_secrets
 from .webstate import get_room_data, submit_whisper, update_room_items, world_state_dict
@@ -187,6 +188,7 @@ def serve(places: dict | None = None, host: str = "127.0.0.1", port: int = 8765,
     url = f"http://{host}:{port}/"
     print(f"✅ AG-World 3D web view running → open in browser: {url}", flush=True)
     print(f"   Places: {', '.join(p['title'] for p in places.values())} · tick {interval:.0f}s · Ctrl-C to quit", flush=True)
+    print(f"💾 Room storage: {'Upstash (persists across deploys)' if store.configured() else 'local file (ephemeral on Render)'}", flush=True)
     # 에이전트별 입장 링크(키 없이 접속하면 관전 모드)
     names = {a.id: a.name for p in places.values() for a in p["world"].agents}
     print("🔑 Invite links (each person opens their own):", flush=True)

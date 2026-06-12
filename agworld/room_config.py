@@ -35,6 +35,7 @@ import secrets as _secrets
 from pathlib import Path
 from typing import Any
 
+from . import store
 from .room import DEFAULT_ROOM_FALLBACK, DEFAULT_ROOM_ITEMS
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "room_config.json"
@@ -123,28 +124,57 @@ def _default_room_config() -> dict[str, Any]:
     }
 
 
-def load_room_config(path: Path | str | None = None) -> dict[str, Any]:
-    """room_config.json을 로드. 파일이 없거나 구버전 스키마면 기본 설정 반환."""
-    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
+# 원격 저장(store) 캐시 — 단일 프로세스가 유일한 쓰기 주체라 TTL 불필요.
+# 폴링(/state, 초당 1회)마다 Upstash를 때리지 않기 위함. 쓰기는 write-through.
+_remote_cache: dict[str, Any] | None = None
 
+
+def _reset_remote_cache() -> None:
+    """테스트용 — 캐시 초기화."""
+    global _remote_cache
+    _remote_cache = None
+
+
+def _copy(config: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(config))
+
+
+def _load_local(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         return _default_room_config()
-
     with open(config_path, encoding="utf-8") as f:
         config = json.load(f)
-
     if "rooms" not in config:  # v1({"room": ...}) → 기본값으로 대체
         return _default_room_config()
     return config
 
 
+def load_room_config(path: Path | str | None = None) -> dict[str, Any]:
+    """room config 로드.
+
+    원격 저장이 설정돼 있으면(기본 경로 사용 시) Upstash에서 한 번 읽어 캐시.
+    아니면 로컬 파일, 파일이 없거나 구버전 스키마면 기본 설정.
+    """
+    global _remote_cache
+    if path is None and store.configured():
+        if _remote_cache is None:
+            _remote_cache = store.load_config() or _load_local(DEFAULT_CONFIG_PATH)
+        return _copy(_remote_cache)  # 호출부가 mutate해도 캐시는 안전
+    return _load_local(Path(path) if path else DEFAULT_CONFIG_PATH)
+
+
 def save_room_config(config: dict[str, Any], path: Path | str | None = None) -> None:
-    """room_config.json으로 저장."""
+    """room config 저장 — 로컬 파일(빠른 재시작용) + 원격(영속)."""
+    global _remote_cache
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+
+    if path is None and store.configured():
+        _remote_cache = _copy(config)
+        store.save_config(config)
 
 
 def _iter_agents(config: dict[str, Any]):
