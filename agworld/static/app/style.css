@@ -31,14 +31,29 @@ body { font-family:-apple-system,"Apple SD Gothic Neo",sans-serif; background:#e
 .whisper button { font-size:12px; color:#2a2620; background:#e0742f; border:none; border-radius:8px; padding:7px 13px; font-weight:600; cursor:pointer; }
 .hint { font-size:10px; color:#9a8f76; margin-top:6px; text-align:center; }
 
-/* ── 가구 편집 툴바 ── */
-#editbar { position:absolute; top:10px; left:10px; right:10px; display:flex; align-items:center; gap:6px;
-  background:rgba(42,38,32,0.92); border-radius:11px; padding:8px 10px; z-index:10; }
-#editbar select { font-size:12px; padding:5px 7px; border-radius:7px; border:none; background:#f5eedd; color:#2a2620; }
-#editbar button { font-size:12px; padding:5px 10px; border-radius:7px; border:none; background:#4a443a; color:#f4f1ea; cursor:pointer; }
-#editbar button:disabled { opacity:0.35; cursor:default; }
-#editbar button.primary { background:#e0742f; font-weight:700; }
-#editbar .vsep { width:1px; height:18px; background:#5a5448; }
-#editbar .grow { flex:1; }
-#editHint { position:absolute; bottom:10px; left:0; right:0; text-align:center; font-size:11px;
-  color:#fffdf7; text-shadow:0 1px 3px rgba(0,0,0,0.5); z-index:10; pointer-events:none; }
+/* ── 가구 편집 UI ── */
+#editTop { position:absolute; top:10px; left:10px; right:10px; display:flex; align-items:center; gap:8px;
+  background:rgba(42,38,32,0.92); border-radius:11px; padding:7px 9px; z-index:10; }
+#editTop button { font-size:12px; padding:6px 12px; border-radius:8px; border:none; background:#4a443a; color:#f4f1ea; cursor:pointer; }
+#editTop button:disabled { opacity:0.35; cursor:default; }
+#editTop button.primary { background:#e0742f; font-weight:700; }
+#editHint { flex:1; text-align:center; font-size:11px; color:#cfc4ae; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+#palette { position:absolute; bottom:10px; left:10px; right:10px; display:flex; gap:6px; overflow-x:auto;
+  background:rgba(42,38,32,0.92); border-radius:11px; padding:7px; z-index:10; }
+.pal-chip { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:54px; flex-shrink:0;
+  font-size:17px; padding:5px 7px 4px; border-radius:9px; border:none; background:#4a443a; color:#f4f1ea; cursor:pointer; }
+.pal-chip small { font-size:9px; opacity:0.75; }
+.pal-chip:active { background:#e0742f; }
+
+#selPanel { position:absolute; bottom:78px; left:50%; transform:translateX(-50%); display:flex; gap:6px;
+  background:rgba(42,38,32,0.95); border-radius:11px; padding:7px 9px; z-index:11; }
+#selPanel button { font-size:16px; width:40px; height:36px; border-radius:8px; border:none;
+  background:#4a443a; color:#f4f1ea; cursor:pointer; line-height:1; }
+#selPanel button.danger { background:#7a3a2a; }
+#selPanel button:active { background:#e0742f; }
+
+#swatches { position:absolute; bottom:126px; left:50%; transform:translateX(-50%); display:flex; gap:7px;
+  background:rgba(42,38,32,0.95); border-radius:11px; padding:8px 10px; z-index:12; }
+.swatch { width:24px; height:24px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); cursor:pointer; padding:0; }
+.swatch:hover { border-color:#fff; }

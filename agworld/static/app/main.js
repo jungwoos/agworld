@@ -170,7 +170,7 @@ function animate(){
   const dt = Math.min(clock.getDelta(), 0.05); elapsed += dt;
   const watching = STATE ? STATE.watching : true;
   if(pathGroup){ pathGroup.children.forEach(d => { d.material.opacity = 0.45 + 0.4 * Math.sin(elapsed * 5 - d.userData.ph); }); }
-  animateAvatars(dt, elapsed, watching);
+  animateAvatars(dt, elapsed, watching, isEditing());   // 편집 중엔 아바타 숨김
   renderer.toneMappingExposure = watching ? 1 : 0.7;
   controls.update();
   renderer.render(scene, camera);

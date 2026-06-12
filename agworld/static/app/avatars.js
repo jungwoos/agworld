@@ -64,8 +64,11 @@ function newTarget(){
 }
 
 // 매 프레임 호출 — idle↔walk 상태머신 + 경로 추종 + 팔다리 스윙 + 감정 페이드
-export function animateAvatars(dt, elapsed, watching){
+// hidden: 가구 편집 중엔 아바타를 숨겨 방해하지 않게
+export function animateAvatars(dt, elapsed, watching, hidden = false){
   for(const id in avatars){ const av=avatars[id], g=av.group;
+    g.visible = !hidden;
+    if(hidden) continue;
     let walking=false;
     if(av.path && av.path.length){   // 경로 추종(집 탭 내비게이션) — 배회/발화보다 우선
       const t=av.path[0], dx=t.x-g.position.x, dz=t.z-g.position.z, d=Math.hypot(dx,dz);

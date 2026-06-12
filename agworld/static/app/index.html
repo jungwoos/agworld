@@ -25,20 +25,23 @@
     <div class="stage">
       <canvas id="scene"></canvas>
       <div id="loading">Loading 3D scene...</div>
-      <!-- 가구 편집 툴바 (편집 모드에서만 표시) -->
-      <div id="editbar" style="display:none">
-        <select id="addSelect"></select>
-        <button id="addBtn">+ Add</button>
-        <span class="vsep"></span>
-        <button id="rotBtn" disabled>⟲ 45°</button>
-        <button id="scaleDn" disabled>−</button>
-        <button id="scaleUp" disabled>＋</button>
-        <button id="delBtn" disabled>🗑</button>
-        <span class="grow"></span>
-        <button id="saveEditBtn" class="primary">Save</button>
-        <button id="cancelEditBtn">Cancel</button>
+      <!-- 가구 편집 UI (편집 모드에서만 표시) -->
+      <div id="editTop" style="display:none">
+        <button id="undoBtn" disabled>↩ Undo</button>
+        <span id="editHint">Tap a chip below to add furniture</span>
+        <button id="doneBtn" class="primary">✓ Done</button>
+        <button id="discardBtn" title="Discard changes">✕</button>
       </div>
-      <div id="editHint" style="display:none">Tap furniture to select · drag to move</div>
+      <div id="swatches" style="display:none"></div>
+      <div id="selPanel" style="display:none">
+        <button id="rotBtn" title="Rotate 45°">⟲</button>
+        <button id="scaleDn" title="Smaller">−</button>
+        <button id="scaleUp" title="Bigger">＋</button>
+        <button id="dupBtn" title="Duplicate">⧉</button>
+        <button id="colorBtn" title="Color">🎨</button>
+        <button id="delBtn" title="Delete" class="danger">🗑</button>
+      </div>
+      <div id="palette" style="display:none"></div>
     </div>
     <div class="rail">
       <h3>💬 Conversation</h3>
