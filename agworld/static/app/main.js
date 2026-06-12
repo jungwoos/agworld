@@ -78,7 +78,9 @@ async function buildTabs(){
   tabs.innerHTML = '';
   list.forEach(p => { const b = document.createElement('div'); b.className = 'tab'; b.dataset.place = p.id;
     b.textContent = p.title + (p.agents ? ` (${p.agents})` : ''); b.onclick = () => switchPlace(p.id); tabs.appendChild(b); });
-  await switchPlace(list[0].id);
+  // 내 방이 있으면 거기서 시작 (jayy 링크로 들어오면 Jayy's Room부터)
+  const home = list.find(p => p.id === ME);
+  await switchPlace(home ? home.id : list[0].id);
 }
 
 // ── 귓속말 ──
